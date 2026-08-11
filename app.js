@@ -4,6 +4,7 @@
   let currentSiteId = null;      // 현장 상세 화면에서 보고 있는 현장
   let currentInspection = null;  // 체크리스트/보고서/지적사항 화면에서 다루는 점검(메모리 상 사본)
   let activeObjectUrls = [];
+  let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -122,6 +123,7 @@
 
   function openBlankSiteForm() {
     editingSiteId = null;
+    pendingAttachments = [];
     $("#siteFormTitle").textContent = "현장 추가";
     SITE_FORM_FIELDS.forEach((id) => { $("#" + id).value = ""; });
     $("#bldRegResult").classList.add("hidden");
@@ -138,19 +140,44 @@
     return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
   }
 
+  function attachmentRowHtml(id, filename, size, url) {
+    return `
+      <div class="list-card attachment-row">
+        <div class="list-card-title">
+          <a href="${url}" download="${escapeHtml(filename)}">${escapeHtml(filename)}</a>
+        </div>
+        <div class="list-card-sub">${formatFileSize(size)}</div>
+        <button class="btn btn-danger btn-delete-attachment" data-att="${id}" type="button">삭제</button>
+      </div>
+    `;
+  }
+
   async function renderSiteAttachments() {
     revokeObjectUrls();
     const list = $("#siteAttachmentsList");
-    const hint = $("#siteAttachmentsHint");
-    const uploadBtn = $("#btnUploadAttachment");
+
+    // 신규 현장(아직 저장 전)은 메모리 상의 pendingAttachments를 보여주고, 저장 시점에 실제 DB로 옮겨 담는다.
     if (!editingSiteId) {
-      list.innerHTML = "";
-      hint.classList.remove("hidden");
-      uploadBtn.classList.add("hidden");
+      if (pendingAttachments.length === 0) {
+        list.innerHTML = `<div class="empty-state">첨부된 자료가 없습니다.</div>`;
+        return;
+      }
+      list.innerHTML = pendingAttachments.map((att) => {
+        const url = URL.createObjectURL(att.blob);
+        activeObjectUrls.push(url);
+        return attachmentRowHtml(att.tempId, att.filename, att.size, url);
+      }).join("");
+      list.querySelectorAll(".btn-delete-attachment").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const ok = await confirmDialog("이 자료를 삭제할까요?");
+          if (!ok) return;
+          pendingAttachments = pendingAttachments.filter((a) => a.tempId !== btn.dataset.att);
+          renderSiteAttachments();
+        });
+      });
       return;
     }
-    hint.classList.add("hidden");
-    uploadBtn.classList.remove("hidden");
+
     const attachments = await FireDB.getAttachmentsBySite(editingSiteId);
     if (attachments.length === 0) {
       list.innerHTML = `<div class="empty-state">첨부된 자료가 없습니다.</div>`;
@@ -159,15 +186,7 @@
     list.innerHTML = attachments.map((att) => {
       const url = URL.createObjectURL(att.blob);
       activeObjectUrls.push(url);
-      return `
-        <div class="list-card attachment-row">
-          <div class="list-card-title">
-            <a href="${url}" download="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</a>
-          </div>
-          <div class="list-card-sub">${formatFileSize(att.size)}</div>
-          <button class="btn btn-danger btn-delete-attachment" data-att="${att.id}" type="button">삭제</button>
-        </div>
-      `;
+      return attachmentRowHtml(att.id, att.filename, att.size, url);
     }).join("");
     list.querySelectorAll(".btn-delete-attachment").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -180,22 +199,27 @@
   }
 
   $("#btnUploadAttachment").addEventListener("click", () => {
-    if (!editingSiteId) { toast("현장을 먼저 저장해주세요.", "error"); return; }
     $("#attachmentInput").click();
   });
 
   $("#attachmentInput").addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (files.length === 0 || !editingSiteId) return;
-    for (const file of files) {
-      await FireDB.addAttachment({
-        siteId: editingSiteId,
-        filename: file.name,
-        size: file.size,
-        blob: file,
-        createdAt: new Date().toISOString()
-      });
+    if (files.length === 0) return;
+    if (editingSiteId) {
+      for (const file of files) {
+        await FireDB.addAttachment({
+          siteId: editingSiteId,
+          filename: file.name,
+          size: file.size,
+          blob: file,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } else {
+      for (const file of files) {
+        pendingAttachments.push({ tempId: FireDB.genId(), filename: file.name, size: file.size, blob: file });
+      }
     }
     await renderSiteAttachments();
     toast(`${files.length}개 자료를 첨부했습니다.`);
@@ -296,6 +320,16 @@
     } else {
       data.createdAt = new Date().toISOString();
       const site = await FireDB.addSite(data);
+      for (const att of pendingAttachments) {
+        await FireDB.addAttachment({
+          siteId: site.id,
+          filename: att.filename,
+          size: att.size,
+          blob: att.blob,
+          createdAt: new Date().toISOString()
+        });
+      }
+      pendingAttachments = [];
       renderSites();
       showScreen("screen-sites");
       openSiteDetail(site.id);
