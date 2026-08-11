@@ -4,13 +4,24 @@
 //  2) 공공데이터포털(data.go.kr) 건축물대장정보 서비스(국토교통부) - 실제 대장 조회용
 const BldReg = (() => {
   const KEY = "fireInspectionApiKeys";
+  // 외부(GitHub Pages) 접속 시 매번 재입력하지 않도록 기본값으로 내장 - 공개 저장소이므로 키가 노출됨을 인지하고 사용자가 직접 요청함.
+  // juso.go.kr 키는 2026-08-11 발급된 임시(테스트) 키(devU01...) 형식이라 며칠 내 만료될 수 있음 - 정식 승인키로 교체 시 아래 값도 갱신 필요.
+  const DEFAULT_KEYS = {
+    jusoKey: "devU01TX0FVVEgyMDI2MDgxMTEwMjU1NzExOTk2MTE=",
+    dataGoKrKey: "CxvoWctkbRsFSxR8Z%2Bpx876r5%2B07L4UY5%2F2VNLFt%2B01QBQwSjGcVqWe1onEs7H06tFLMp3tgh06U%2BZT0hFhNtw%3D%3D"
+  };
 
   function getKeys() {
+    let stored;
     try {
-      return JSON.parse(localStorage.getItem(KEY)) || {};
+      stored = JSON.parse(localStorage.getItem(KEY)) || {};
     } catch (e) {
-      return {};
+      stored = {};
     }
+    return {
+      jusoKey: stored.jusoKey || DEFAULT_KEYS.jusoKey,
+      dataGoKrKey: stored.dataGoKrKey || DEFAULT_KEYS.dataGoKrKey
+    };
   }
 
   function saveKeys(keys) {
