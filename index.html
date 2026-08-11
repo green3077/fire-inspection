@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>소방점검 관리</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>🧯 소방점검 관리</h1>
+</header>
+
+<div id="toastContainer" class="toast-container no-print"></div>
+
+<div id="confirmModal" class="modal-overlay hidden no-print">
+  <div class="modal-box">
+    <div id="confirmMessage" class="modal-message"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="confirmCancelBtn">취소</button>
+      <button class="btn btn-primary" id="confirmOkBtn">확인</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- 현장 목록 -->
+  <section id="screen-sites" class="screen">
+    <div class="section-actions">
+      <button class="btn btn-primary" id="btnAddSite">+ 현장 추가</button>
+    </div>
+    <div id="sitesList"></div>
+  </section>
+
+  <!-- 현장 등록/수정 -->
+  <section id="screen-site-form" class="screen">
+    <div class="card">
+      <h2 id="siteFormTitle">현장 추가</h2>
+      <div class="field"><span>현장명 *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
+      <div class="field"><span>주소</span><input type="text" id="siteAddress" placeholder="예: 서울시 강남구 ..."></div>
+      <button class="btn btn-secondary" id="btnLookupBldReg" type="button">🏢 건축물대장 조회</button>
+      <div id="bldRegResult" class="bldreg-result hidden"></div>
+      <div class="field-row">
+        <div class="field"><span>담당자명</span><input type="text" id="siteContactName"></div>
+        <div class="field"><span>연락처</span><input type="text" id="siteContactPhone" placeholder="010-0000-0000"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>건물 용도</span><input type="text" id="siteBuildingType" placeholder="예: 근린생활시설"></div>
+        <div class="field"><span>연면적(㎡)</span><input type="text" id="siteArea" inputmode="decimal"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>층수(지상/지하)</span><input type="text" id="siteFloorInfo" placeholder="예: 지상 6층/지하 1층"></div>
+        <div class="field"><span>사용승인일</span><input type="text" id="siteApprovalDate" placeholder="예: 2010-05-01"></div>
+      </div>
+      <div class="field"><span>구조</span><input type="text" id="siteStructure" placeholder="예: 철근콘크리트구조"></div>
+      <div class="field"><span>비고</span><textarea id="siteNotes" rows="3"></textarea></div>
+      <button class="btn btn-primary" id="btnSaveSite">저장</button>
+      <button class="btn btn-secondary" id="btnCancelSiteForm">취소</button>
+    </div>
+  </section>
+
+  <!-- 현장 상세 -->
+  <section id="screen-site-detail" class="screen">
+    <div class="card" id="siteDetailInfo"></div>
+    <div class="section-actions">
+      <button class="btn btn-primary" id="btnScheduleFromSite">📋 점검 시작 / 이어서 하기</button>
+    </div>
+    <h2 class="list-heading">점검 이력</h2>
+    <div id="siteInspectionsList"></div>
+    <div class="row-actions">
+      <button class="btn btn-secondary" id="btnEditSite">현장 정보 수정</button>
+      <button class="btn btn-danger" id="btnDeleteSite">현장 삭제</button>
+    </div>
+    <button class="btn btn-secondary" id="btnBackToSites">← 목록으로</button>
+  </section>
+
+  <!-- 체크리스트 진행 -->
+  <section id="screen-checklist" class="screen">
+    <div class="card" id="checklistHeader"></div>
+    <div id="checklistBody"></div>
+    <div class="field">
+      <span>총평 / 종합 소견</span>
+      <textarea id="inspOverallNote" rows="3"></textarea>
+    </div>
+    <button class="btn btn-primary btn-large" id="btnCompleteInspection">점검 완료 처리</button>
+    <button class="btn btn-secondary" id="btnGoToDeficiencies">🔧 지적사항 / 이행완료 관리</button>
+    <button class="btn btn-secondary" id="btnViewSiteInfo">🏢 현장 정보 / 점검 이력</button>
+    <button class="btn btn-secondary" id="btnSaveChecklistDraft">임시 저장</button>
+    <button class="btn btn-secondary" id="btnBackFromChecklist">← 목록으로</button>
+  </section>
+
+  <!-- 보고서 -->
+  <section id="screen-report" class="screen">
+    <div class="report-toolbar no-print">
+      <button class="btn btn-secondary" id="btnBackFromReport">← 목록으로</button>
+      <button class="btn btn-primary" id="btnPrintReport">인쇄 / PDF 저장</button>
+      <button class="btn btn-secondary" id="btnShareReport">공유</button>
+    </div>
+    <button class="btn btn-secondary no-print" id="btnGoToDeficienciesFromReport">🔧 지적사항 / 이행완료 관리</button>
+    <div id="reportContent"></div>
+  </section>
+
+  <!-- 지적사항 전체 관리 (업체별) -->
+  <section id="screen-deficiency-hub" class="screen">
+    <div class="card">
+      <h2>지적사항 / 이행완료 관리</h2>
+      <div class="hint-text">현장(업체)을 선택하면 그 현장의 지적사항을 한곳에서 관리할 수 있습니다.</div>
+    </div>
+    <div id="deficiencyHubList"></div>
+  </section>
+
+  <!-- 지적사항 관리 -->
+  <section id="screen-deficiencies" class="screen">
+    <div class="card" id="deficiencyHeader"></div>
+    <div class="section-actions deficiency-toolbar">
+      <button class="btn btn-primary" id="btnAddDeficiency">+ 직접 추가</button>
+      <button class="btn btn-secondary" id="btnImportData">📎 지적사항 자료 올리기</button>
+    </div>
+    <div id="deficienciesList"></div>
+    <button class="btn btn-primary btn-large" id="btnGenerateCompletionReport">이행완료 보고서 생성</button>
+    <button class="btn btn-secondary" id="btnBackFromDeficiencies">← 뒤로</button>
+  </section>
+
+  <!-- 이행완료 보고서 -->
+  <section id="screen-completion-report" class="screen">
+    <div class="report-toolbar no-print">
+      <button class="btn btn-secondary" id="btnBackFromCompletionReport">← 목록으로</button>
+      <button class="btn btn-primary" id="btnPrintCompletionReport">인쇄 / PDF 저장</button>
+      <button class="btn btn-secondary" id="btnShareCompletionReport">공유</button>
+    </div>
+    <div id="completionReportContent"></div>
+  </section>
+
+  <!-- 일정관리 -->
+  <section id="screen-route" class="screen">
+    <div class="card">
+      <h2>일정관리</h2>
+      <div class="hint-text">예정된 점검을 날짜별로 모아 보여줍니다. 날짜를 누르면 아래에서 해당 날짜의 방문 현장과 동선을 확인할 수 있습니다.</div>
+    </div>
+    <div id="scheduleAgenda"></div>
+    <div class="card">
+      <h2>날짜별 상세 / 동선</h2>
+      <div class="field"><span>날짜</span><input type="date" id="routeDate"></div>
+    </div>
+    <div id="routeList"></div>
+    <button class="btn btn-primary btn-large" id="btnOpenGoogleRoute">🗺️ 구글 지도로 동선 보기</button>
+    <div class="hint-text">사무실을 출발지로, 선택한 날짜의 방문 현장을 목적지로 구글 지도 경로가 열립니다. 목적지가 3곳 이상이면 구글 지도 화면에서 '경로 최적화'를 켜면 자동으로 최단 순서로 정렬됩니다.</div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="screen-settings" class="screen">
+    <div class="card">
+      <h2>사용자 / 업체 정보</h2>
+      <div class="field"><span>업체명</span><input type="text" id="companyName"></div>
+      <div class="field"><span>출발 주소 (사무실)</span><input type="text" id="companyAddress"></div>
+      <div class="field-row">
+        <div class="field"><span>연락처</span><input type="text" id="companyPhone" placeholder="010-0000-0000"></div>
+        <div class="field"><span>대표이사</span><input type="text" id="companyCeo" placeholder="예: 홍길동"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>사업자 등록번호</span><input type="text" id="companyBizRegNo" placeholder="000-00-00000"></div>
+        <div class="field"><span>면허번호</span><input type="text" id="companyLicenseNo" placeholder="소방시설관리업 등록번호"></div>
+      </div>
+      <button class="btn btn-secondary" id="btnSaveCompany">저장</button>
+    </div>
+    <div class="card">
+      <h2>건축물대장 조회 API 키</h2>
+      <div class="hint-text">주소 입력만으로 건축물대장을 자동 조회하려면 무료 API 키 2개가 필요합니다. 각 사이트에서 본인 명의로 발급받아 아래에 입력하세요 (승인은 보통 즉시~수분).</div>
+      <div class="field"><span>도로명주소 API 키 (juso.go.kr)</span><input type="text" id="jusoApiKey" placeholder="business.juso.go.kr에서 발급"></div>
+      <div class="field"><span>공공데이터포털 건축물대장 인증키 (data.go.kr)</span><input type="text" id="dataGoKrApiKey" placeholder="건축물대장정보 서비스 활용신청 후 발급"></div>
+      <button class="btn btn-secondary" id="btnSaveApiKeys">API 키 저장</button>
+    </div>
+  </section>
+
+</div>
+
+<nav class="tab-bar no-print">
+  <button class="tab-btn" data-tab="screen-sites">📋 점검</button>
+  <button class="tab-btn" data-tab="screen-deficiency-hub">🔧 지적사항</button>
+  <button class="tab-btn" data-tab="screen-route">🗓️ 일정관리</button>
+  <button class="tab-btn" data-tab="screen-settings">⚙️ 설정</button>
+</nav>
+
+<input type="file" id="dataImportInput" accept=".xlsx,.xls,.docx,.pdf" class="hidden">
+<datalist id="categoryList"></datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="db.js"></script>
+<script src="checklist-data.js"></script>
+<script src="ui.js"></script>
+<script src="import.js"></script>
+<script src="bldreg.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
