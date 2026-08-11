@@ -1032,6 +1032,8 @@
     await openCompletionReport();
   });
 
+  let lastCompletionReportData = null;
+
   async function openCompletionReport() {
     revokeObjectUrls();
     const site = await FireDB.getSite(currentDeficiencySiteId);
@@ -1180,8 +1182,34 @@
         </div>
       </div>
     `;
+    lastCompletionReportData = { site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr };
     showScreen("screen-completion-report");
   }
+
+  $("#btnDownloadCompletionHwpx").addEventListener("click", async () => {
+    if (!lastCompletionReportData) return;
+    const btn = $("#btnDownloadCompletionHwpx");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "생성 중...";
+    try {
+      const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `이행완료보고서_${lastCompletionReportData.siteName}.hwpx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      toast("HWPX 파일이 생성되었습니다. 한글 프로그램에서 정상적으로 열리는지 꼭 확인해주세요.", "success");
+    } catch (err) {
+      toast("HWPX 파일 생성에 실패했습니다: " + err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
 
   $("#btnBackFromCompletionReport").addEventListener("click", async () => {
     await renderDeficiencies();
