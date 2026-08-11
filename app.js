@@ -127,8 +127,79 @@
     $("#bldRegResult").classList.add("hidden");
     $("#importSummary").classList.add("hidden");
     lastAutoBldRegAddress = "";
+    renderSiteAttachments();
     showScreen("screen-site-form");
   }
+
+  function formatFileSize(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  }
+
+  async function renderSiteAttachments() {
+    revokeObjectUrls();
+    const list = $("#siteAttachmentsList");
+    const hint = $("#siteAttachmentsHint");
+    const uploadBtn = $("#btnUploadAttachment");
+    if (!editingSiteId) {
+      list.innerHTML = "";
+      hint.classList.remove("hidden");
+      uploadBtn.classList.add("hidden");
+      return;
+    }
+    hint.classList.add("hidden");
+    uploadBtn.classList.remove("hidden");
+    const attachments = await FireDB.getAttachmentsBySite(editingSiteId);
+    if (attachments.length === 0) {
+      list.innerHTML = `<div class="empty-state">첨부된 자료가 없습니다.</div>`;
+      return;
+    }
+    list.innerHTML = attachments.map((att) => {
+      const url = URL.createObjectURL(att.blob);
+      activeObjectUrls.push(url);
+      return `
+        <div class="list-card attachment-row">
+          <div class="list-card-title">
+            <a href="${url}" download="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</a>
+          </div>
+          <div class="list-card-sub">${formatFileSize(att.size)}</div>
+          <button class="btn btn-danger btn-delete-attachment" data-att="${att.id}" type="button">삭제</button>
+        </div>
+      `;
+    }).join("");
+    list.querySelectorAll(".btn-delete-attachment").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const ok = await confirmDialog("이 자료를 삭제할까요?");
+        if (!ok) return;
+        await FireDB.deleteAttachment(btn.dataset.att);
+        renderSiteAttachments();
+      });
+    });
+  }
+
+  $("#btnUploadAttachment").addEventListener("click", () => {
+    if (!editingSiteId) { toast("현장을 먼저 저장해주세요.", "error"); return; }
+    $("#attachmentInput").click();
+  });
+
+  $("#attachmentInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0 || !editingSiteId) return;
+    for (const file of files) {
+      await FireDB.addAttachment({
+        siteId: editingSiteId,
+        filename: file.name,
+        size: file.size,
+        blob: file,
+        createdAt: new Date().toISOString()
+      });
+    }
+    await renderSiteAttachments();
+    toast(`${files.length}개 자료를 첨부했습니다.`);
+  });
 
   $("#btnAddSite").addEventListener("click", () => showScreen("screen-site-entry-choice"));
   $("#btnCancelEntryChoice").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
@@ -139,11 +210,20 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
-    toast("자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    toast(ClaudeFill.isConfigured() ? "Claude AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요..." : "자료를 분석하고 있습니다. 잠시만 기다려주세요...");
     try {
-      const result = await ClientImport.parseClientFile(file);
+      let result = null;
+      if (ClaudeFill.isConfigured()) {
+        try {
+          const aiResult = await ClaudeFill.analyzeClientFile(file);
+          if (!aiResult.unsupported) result = aiResult;
+        } catch (aiErr) {
+          result = null; // AI 분석 실패 시 기존 방식으로 폴백
+        }
+      }
+      if (!result) result = await ClientImport.parseClientFile(file);
       if (result.unsupported) {
-        toast("지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp, 사진).", "error");
+        toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp${ClaudeFill.isConfigured() ? ", .hwpx" : ""}, 사진).`, "error");
         return;
       }
       openBlankSiteForm();
@@ -358,6 +438,7 @@
     $("#bldRegResult").classList.add("hidden");
     $("#importSummary").classList.add("hidden");
     lastAutoBldRegAddress = site.address || "";
+    renderSiteAttachments();
     showScreen("screen-site-form");
   });
 
@@ -894,27 +975,39 @@
     e.target.value = "";
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
+    if (ClaudeFill.isConfigured()) toast("Claude AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요...");
     try {
       let rows = null;
       let lowConfidence = false;
       let typeLabel = "";
-      if (ext === "xlsx" || ext === "xls") {
-        rows = await FireImport.parseExcelFile(file);
-        typeLabel = "엑셀";
-      } else if (ext === "docx") {
-        rows = await FireImport.parseWordFile(file);
-        typeLabel = "워드 문서";
-      } else if (ext === "pdf") {
-        const result = await FireImport.parsePdfFile(file);
-        rows = result.rows;
-        lowConfidence = result.lowConfidence;
-        typeLabel = "PDF";
-      } else {
-        toast("지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf만 가능).", "error");
-        return;
+      if (ClaudeFill.isConfigured() && ClaudeFill.isSupportedExt(ext)) {
+        try {
+          const aiResult = await ClaudeFill.analyzeDeficiencyFile(file);
+          rows = aiResult.rows;
+          typeLabel = aiResult.typeLabel;
+        } catch (aiErr) {
+          rows = null; // AI 분석 실패 시 기존 방식으로 폴백
+        }
+      }
+      if (!rows) {
+        if (ext === "xlsx" || ext === "xls") {
+          rows = await FireImport.parseExcelFile(file);
+          typeLabel = "엑셀";
+        } else if (ext === "docx") {
+          rows = await FireImport.parseWordFile(file);
+          typeLabel = "워드 문서";
+        } else if (ext === "pdf") {
+          const result = await FireImport.parsePdfFile(file);
+          rows = result.rows;
+          lowConfidence = result.lowConfidence;
+          typeLabel = "PDF";
+        } else {
+          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${ClaudeFill.isConfigured() ? ", .hwpx, 사진" : ""}만 가능).`, "error");
+          return;
+        }
       }
       if (!rows || rows.length === 0) {
-        toast(`${typeLabel}에서 지적사항 표를 인식하지 못했습니다. 다른 파일을 이용하거나 직접 입력해주세요.`, "error");
+        toast(`${typeLabel || "파일"}에서 지적사항 표를 인식하지 못했습니다. 다른 파일을 이용하거나 직접 입력해주세요.`, "error");
         return;
       }
       for (const r of rows) {
@@ -942,9 +1035,10 @@
   async function openCompletionReport() {
     revokeObjectUrls();
     const site = await FireDB.getSite(currentDeficiencySiteId);
+    const company = getCompanyProfile();
     const resolved = currentDeficiencies.filter((d) => d.resolved);
     const dates = resolved.map((d) => d.resolvedDate).filter(Boolean).sort();
-    const dateRange = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`) : "-";
+    const dateRange = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`) : ". . . ~ . . .";
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
@@ -961,36 +1055,130 @@
       }).join("");
     }
 
-    const rowsHtml = resolved.map((def) => `
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
+
+    const siteName = site ? site.name || "-" : "-";
+    const siteType = site ? site.buildingType || "-" : "-";
+    const siteAddr = site ? site.address || "-" : "-";
+    const contactName = site ? site.contactName || "" : "";
+    const contactPhone = site ? site.contactPhone || "" : "";
+    const managerName = site ? site.fireManagerName || "" : "";
+    const managerPhone = site ? site.fireManagerPhone || "" : "";
+
+    const detailRowsHtml = resolved.map((def, idx) => `
       <tr>
-        <td class="completion-loc">
+        <td class="did-no">${idx + 1}</td>
+        <td class="did-content">
           <strong>${escapeHtml([def.floor, def.location].filter(Boolean).join(" "))}</strong>
           ${def.code ? `<div class="report-item-note">점검번호: ${escapeHtml(def.code)}</div>` : ""}
           <div class="report-item-note">${escapeHtml(def.description)}</div>
         </td>
-        <td class="completion-photo-cell">${photoCellHtml(def, "before")}</td>
-        <td class="completion-photo-cell">${photoCellHtml(def, "after")}</td>
+        <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
+        <td class="did-photo completion-photo-cell">${photoCellHtml(def, "after")}</td>
+        <td class="did-result">완료</td>
       </tr>
     `).join("");
 
     $("#completionReportContent").innerHTML = `
-      <div class="report-header">
-        <h2>소방시설등의 자체점검 결과 이행완료 보고서</h2>
-        <div class="sub">${escapeHtml(site ? site.name : "")}</div>
+      <div class="official-form">
+        <div class="official-form-topnote">■ 소방시설 설치 및 관리에 관한 법률 시행규칙 [별지 제11호서식]</div>
+        <div class="official-form-title">소방시설등의 자체점검 결과 이행완료 보고서</div>
+
+        <table class="official-table">
+          <tr>
+            <td class="section-label" rowspan="3">특정소방<br>대상물</td>
+            <td class="field-label">대상물 명칭(상호)</td>
+            <td>${escapeHtml(siteName)}</td>
+            <td class="field-label">대상물 구분(용도)</td>
+            <td>${escapeHtml(siteType)}</td>
+          </tr>
+          <tr>
+            <td class="field-label">관계인</td>
+            <td>성명: ${escapeHtml(contactName || "-")} 　전화번호: ${escapeHtml(contactPhone || "-")}</td>
+            <td class="field-label">소방안전관리자</td>
+            <td>성명: ${escapeHtml(managerName || "-")} 　전화번호: ${escapeHtml(managerPhone || "-")}</td>
+          </tr>
+          <tr>
+            <td class="field-label">소재지</td>
+            <td colspan="3">${escapeHtml(siteAddr)}</td>
+          </tr>
+        </table>
+
+        <table class="official-table">
+          <tr>
+            <td class="section-label" rowspan="3">소방공사<br>업체</td>
+            <td class="field-label">업체명(상호)</td>
+            <td>${escapeHtml(company.name || "-")}</td>
+            <td class="field-label">사업자번호</td>
+            <td>${escapeHtml(company.bizRegNo || "-")}</td>
+          </tr>
+          <tr>
+            <td class="field-label">대표이사</td>
+            <td colspan="3">성명: ${escapeHtml(company.ceo || "-")} 　전화번호: ${escapeHtml(company.phone || "-")}</td>
+          </tr>
+          <tr>
+            <td class="field-label">소재지</td>
+            <td colspan="3">${escapeHtml(company.address || "-")}</td>
+          </tr>
+        </table>
+
+        <table class="official-table">
+          <tr>
+            <td class="section-label">이행완료<br>사항</td>
+            <td class="field-label">이행조치 내용</td>
+            <td>※ 지 적 내 역 참 조 ※</td>
+            <td class="field-label">이행조치 일자</td>
+            <td>${escapeHtml(dateRange)}</td>
+          </tr>
+        </table>
+
+        <p class="official-form-legal">
+          「소방시설 설치 및 안전관리에 관한 법률」 제23조제4항 및 같은 법 시행규칙 제23조제6항에 따라 위와 같이 소방시설등의 수리ㆍ교체ㆍ정비에 대한 이행완료 보고서를 제출합니다.
+        </p>
+
+        <div class="official-form-sign">
+          <div>${todayStr}</div>
+          <div>관계인: ${escapeHtml(contactName || "")}　　　　　(서명 또는 인)</div>
+          <div>○○ 소방본부장ㆍ소방서장 귀하</div>
+        </div>
+
+        <div class="official-form-note">
+          <div class="official-form-note-title">첨부서류</div>
+          <div>1. 이행계획 건별 이행 전ㆍ후 사진 증명자료 1부</div>
+          <div>2. 소방시설공사 계약서(이행조치 내용과 관련됩니다) 1부</div>
+        </div>
+
+        <div class="official-form-note">
+          <div class="official-form-note-title">유의 사항</div>
+          <div>「소방시설 설치 및 관리에 관한 법률」 제61조제1항 제8호 및 제9호</div>
+          <div>1. 특정소방대상물의 관계인이 법 제22조에 따른 소방시설등의 자체점검 결과에 따른 수리ㆍ조치ㆍ정비사항 발생 시 이행계획서를 첨부하지 않거나 거짓으로 제출한 경우 300만원 이하의 과태료를 부과합니다.</div>
+          <div>2. 특정소방대상물의 관계인이 소방시설등의 수리ㆍ조치ㆍ정비 이행계획을 별도의 연기신청 없이 기간 내에 완료하지 않은 경우 300만원 이하의 과태료를 부과합니다.</div>
+        </div>
+
+        <div class="official-form-footer">210mm×297mm[백상지(80g/㎡) 또는 중질지(80g/㎡)]</div>
+
+        <div class="official-page-break">
+          <div class="official-form-title">지적내역서 (대상물: ${escapeHtml(siteName)})</div>
+          <table class="completion-table">
+            <thead>
+              <tr>
+                <th class="did-no">번호</th>
+                <th class="did-content">이행조치 내용</th>
+                <th class="did-photo" colspan="2">이행완료 보고서 증빙자료</th>
+                <th class="did-result">이행결과</th>
+              </tr>
+              <tr>
+                <th colspan="2" class="official-table-note">1. 이행 조치 건별 전ㆍ후 사진&nbsp;&nbsp; 2. 공사계약서 등 증빙서류 첨부(별첨)</th>
+                <th class="did-photo">이행 전</th>
+                <th class="did-photo">이행 후</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${detailRowsHtml}</tbody>
+          </table>
+        </div>
       </div>
-      <div class="report-meta">
-        <div class="report-meta-row"><span class="label">대상물 명칭</span><span>${escapeHtml(site ? site.name : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">대상물 구분</span><span>${escapeHtml(site ? site.buildingType || "-" : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">소재지</span><span>${escapeHtml(site ? site.address || "-" : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">관계인</span><span>${escapeHtml(site ? site.contactName || "-" : "-")} ${site && site.contactPhone ? "(" + escapeHtml(site.contactPhone) + ")" : ""}</span></div>
-        <div class="report-meta-row"><span class="label">이행조치 일자</span><span>${escapeHtml(dateRange)}</span></div>
-      </div>
-      <table class="completion-table">
-        <thead>
-          <tr><th class="completion-loc">위치 / 지적내용</th><th>이행 전</th><th>이행 후</th></tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
     `;
     showScreen("screen-completion-report");
   }
@@ -1106,6 +1294,7 @@
     const apiKeys = BldReg.getKeys();
     $("#jusoApiKey").value = apiKeys.jusoKey || "";
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
+    $("#claudeApiKey").value = ClaudeFill.getApiKey();
   }
 
   $("#btnSaveApiKeys").addEventListener("click", () => {
@@ -1114,6 +1303,16 @@
       dataGoKrKey: $("#dataGoKrApiKey").value.trim()
     });
     toast("API 키가 저장되었습니다.");
+  });
+
+  $("#btnSaveClaudeKey").addEventListener("click", () => {
+    const key = $("#claudeApiKey").value.trim();
+    if (key && /[^\x00-\x7F]/.test(key)) {
+      toast("API 키에 한글이나 다른 문자가 섞여 있는 것 같습니다. 안내 문구 없이 키 값만 정확히 복사해서 다시 붙여넣어 주세요 (보통 sk-ant-로 시작합니다).", "error");
+      return;
+    }
+    ClaudeFill.saveApiKey(key);
+    toast(ClaudeFill.isConfigured() ? "Claude API 키가 저장되었습니다. 이제 파일 업로드 시 AI가 자동으로 분석합니다." : "Claude API 키가 삭제되었습니다.");
   });
 
   async function renderRouteList() {

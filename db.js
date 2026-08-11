@@ -1,12 +1,13 @@
 // 소방점검 관리 데이터 저장용 IndexedDB 래퍼
 const FireDB = (() => {
   const DB_NAME = "fire-inspection-db";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const STORES = {
     sites: "sites",
     inspections: "inspections",
     photos: "photos",
-    deficiencies: "deficiencies"
+    deficiencies: "deficiencies",
+    attachments: "attachments"
   };
   let dbPromise = null;
 
@@ -14,6 +15,9 @@ const FireDB = (() => {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onblocked = () => {
+        if (window.toast) window.toast("다른 탭/창에서 이 앱이 열려 있어 데이터베이스 업데이트가 대기 중입니다. 다른 탭을 닫아주세요.", "error");
+      };
       req.onupgradeneeded = () => {
         const db = req.result;
         const tx = req.transaction;
@@ -38,6 +42,10 @@ const FireDB = (() => {
         }
         if (!db.objectStoreNames.contains(STORES.deficiencies)) {
           const store = db.createObjectStore(STORES.deficiencies, { keyPath: "id" });
+          store.createIndex("siteId", "siteId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.attachments)) {
+          const store = db.createObjectStore(STORES.attachments, { keyPath: "id" });
           store.createIndex("siteId", "siteId", { unique: false });
         }
       };
@@ -123,6 +131,10 @@ const FireDB = (() => {
       for (const def of defs) {
         await this.deleteDeficiency(def.id);
       }
+      const atts = await getAllByIndex(STORES.attachments, "siteId", id);
+      for (const att of atts) {
+        await remove(STORES.attachments, att.id);
+      }
       return remove(STORES.sites, id);
     },
     getSite: (id) => get(STORES.sites, id),
@@ -187,6 +199,16 @@ const FireDB = (() => {
     },
     getDeficiency: (id) => get(STORES.deficiencies, id),
     getAllDeficiencies: () => getAll(STORES.deficiencies),
-    getDeficienciesBySite: (siteId) => getAllByIndex(STORES.deficiencies, "siteId", siteId)
+    getDeficienciesBySite: (siteId) => getAllByIndex(STORES.deficiencies, "siteId", siteId),
+
+    // Attachments (현장에 첨부하는 일반 파일 - 사진 외 문서 등)
+    async addAttachment(att) {
+      const id = att.id || genId();
+      return put(STORES.attachments, { ...att, id });
+    },
+    async deleteAttachment(id) {
+      return remove(STORES.attachments, id);
+    },
+    getAttachmentsBySite: (siteId) => getAllByIndex(STORES.attachments, "siteId", siteId)
   };
 })();
