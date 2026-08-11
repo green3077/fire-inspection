@@ -24,7 +24,18 @@
     $$(".screen").forEach((s) => s.classList.remove("active"));
     $("#" + id).classList.add("active");
     $$(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
+    $(".tab-bar").classList.toggle("hidden", id === "screen-home");
+    const isSiteForm = id === "screen-site-form";
+    $("#btnHeaderBack").classList.toggle("header-btn-off", !isSiteForm);
+    $("#btnHeaderSave").classList.toggle("header-btn-off", !isSiteForm);
   }
+
+  // ---------- 홈 ----------
+  $("#appHeaderTitle").addEventListener("click", () => showScreen("screen-home"));
+  $("#btnHeaderBack").addEventListener("click", () => $("#btnCancelSiteForm").click());
+  $("#btnHeaderSave").addEventListener("click", () => $("#btnSaveSite").click());
+  $("#btnHomeAddSite").addEventListener("click", () => $("#btnAddSite").click());
+  $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
 
   // ---------- 탭 ----------
   $$(".tab-btn").forEach((btn) => {
@@ -101,13 +112,72 @@
     await openInspection(insp.id);
   }
 
-  $("#btnAddSite").addEventListener("click", () => {
+  const SITE_FORM_FIELDS = [
+    "siteName", "siteAddress", "siteContactName", "siteContactPhone",
+    "siteBuildingType", "siteArea", "siteFloorInfo", "siteApprovalDate", "siteStructure",
+    "siteFireManagerName", "siteFireManagerPhone", "siteFireManagerAppointDate", "siteFireManagerEduDate",
+    "siteEngineerName", "siteEngineerPhone", "siteNotes",
+    "siteReceiverLocation", "siteReceiverAccess", "sitePumpRoomLocation", "sitePumpRoomAccess", "siteEquipmentMemo"
+  ];
+
+  function openBlankSiteForm() {
     editingSiteId = null;
     $("#siteFormTitle").textContent = "현장 추가";
-    ["siteName", "siteAddress", "siteContactName", "siteContactPhone", "siteBuildingType", "siteArea", "siteFloorInfo", "siteApprovalDate", "siteStructure", "siteNotes"]
-      .forEach((id) => { $("#" + id).value = ""; });
+    SITE_FORM_FIELDS.forEach((id) => { $("#" + id).value = ""; });
     $("#bldRegResult").classList.add("hidden");
+    $("#importSummary").classList.add("hidden");
+    lastAutoBldRegAddress = "";
     showScreen("screen-site-form");
+  }
+
+  $("#btnAddSite").addEventListener("click", () => showScreen("screen-site-entry-choice"));
+  $("#btnCancelEntryChoice").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
+  $("#btnEntryManual").addEventListener("click", openBlankSiteForm);
+  $("#btnEntryImport").addEventListener("click", () => $("#clientImportInput").click());
+
+  $("#clientImportInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    toast("자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    try {
+      const result = await ClientImport.parseClientFile(file);
+      if (result.unsupported) {
+        toast("지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp, 사진).", "error");
+        return;
+      }
+      openBlankSiteForm();
+      if (result.failed) {
+        $("#importSummary").classList.remove("hidden");
+        $("#importSummary").textContent = `${result.typeLabel}에서 자동으로 인식된 항목이 없습니다. 아래 내용을 직접 입력해주세요.`;
+        toast(`${result.typeLabel}에서 인식된 정보가 없습니다. 직접 입력해주세요.`, "error");
+        return;
+      }
+      const map = {
+        name: "siteName", address: "siteAddress",
+        contactName: "siteContactName", contactPhone: "siteContactPhone",
+        fireManagerName: "siteFireManagerName", fireManagerPhone: "siteFireManagerPhone",
+        fireManagerAppointDate: "siteFireManagerAppointDate", fireManagerEduDate: "siteFireManagerEduDate",
+        engineerName: "siteEngineerName", engineerPhone: "siteEngineerPhone",
+        receiverLocation: "siteReceiverLocation", pumpRoomLocation: "sitePumpRoomLocation",
+        area: "siteArea", approvalDate: "siteApprovalDate", floorInfo: "siteFloorInfo",
+        buildingType: "siteBuildingType"
+      };
+      let filledCount = 0;
+      Object.entries(map).forEach(([field, id]) => {
+        if (result.fields[field]) { $("#" + id).value = result.fields[field]; filledCount++; }
+      });
+      $("#importSummary").classList.remove("hidden");
+      $("#importSummary").textContent = `${result.typeLabel}에서 ${filledCount}개 항목을 자동으로 채웠습니다.${result.lowConfidence ? " 인식 품질이 낮을 수 있으니 내용을 꼭 확인해주세요." : " 내용을 확인 후 저장해주세요."}`;
+      toast(`${result.typeLabel}에서 ${filledCount}개 항목을 채웠습니다. 내용을 확인해주세요.`);
+      if (result.fields.address) {
+        lastAutoBldRegAddress = result.fields.address;
+        lookupBldRegForCurrentAddress();
+      }
+    } catch (err) {
+      toast("파일을 분석하는 중 오류가 발생했습니다. 직접 입력해주세요.", "error");
+      openBlankSiteForm();
+    }
   });
 
   $("#btnCancelSiteForm").addEventListener("click", () => {
@@ -127,6 +197,17 @@
       floorInfo: $("#siteFloorInfo").value.trim(),
       approvalDate: $("#siteApprovalDate").value.trim(),
       structure: $("#siteStructure").value.trim(),
+      fireManagerName: $("#siteFireManagerName").value.trim(),
+      fireManagerPhone: $("#siteFireManagerPhone").value.trim(),
+      fireManagerAppointDate: $("#siteFireManagerAppointDate").value.trim(),
+      fireManagerEduDate: $("#siteFireManagerEduDate").value.trim(),
+      engineerName: $("#siteEngineerName").value.trim(),
+      engineerPhone: $("#siteEngineerPhone").value.trim(),
+      receiverLocation: $("#siteReceiverLocation").value.trim(),
+      receiverAccess: $("#siteReceiverAccess").value.trim(),
+      pumpRoomLocation: $("#sitePumpRoomLocation").value.trim(),
+      pumpRoomAccess: $("#sitePumpRoomAccess").value.trim(),
+      equipmentMemo: $("#siteEquipmentMemo").value.trim(),
       notes: $("#siteNotes").value.trim()
     };
     if (editingSiteId) {
@@ -141,18 +222,20 @@
     }
   });
 
-  $("#btnLookupBldReg").addEventListener("click", async () => {
+  let lastAutoBldRegAddress = "";
+
+  async function lookupBldRegForCurrentAddress() {
     const address = $("#siteAddress").value.trim();
     const resultBox = $("#bldRegResult");
     if (!address) { toast("주소를 먼저 입력해주세요.", "error"); return; }
     const keys = BldReg.getKeys();
     if (!keys.jusoKey || !keys.dataGoKrKey) {
       resultBox.classList.remove("hidden");
-      resultBox.innerHTML = `<div class="bldreg-error">건축물대장 조회를 사용하려면 '동선' 탭 하단의 API 키를 먼저 저장해주세요 (도로명주소 API 키, 공공데이터포털 건축물대장 인증키).</div>`;
+      resultBox.innerHTML = `<div class="bldreg-error">건축물대장 조회를 사용하려면 '설정' 탭에서 API 키를 먼저 저장해주세요 (도로명주소 API 키, 공공데이터포털 건축물대장 인증키).</div>`;
       return;
     }
     resultBox.classList.remove("hidden");
-    resultBox.innerHTML = `<div class="report-meta-row"><span class="label">상태</span><span>조회 중...</span></div>`;
+    resultBox.innerHTML = `<div class="report-meta-row"><span class="label">상태</span><span>건축물대장 조회 중...</span></div>`;
     try {
       const { item } = await BldReg.lookup(address);
       if (!item) {
@@ -167,6 +250,13 @@
         approvalDate: /^\d{8}$/.test(rawApprovalDate) ? `${rawApprovalDate.slice(0, 4)}-${rawApprovalDate.slice(4, 6)}-${rawApprovalDate.slice(6, 8)}` : rawApprovalDate,
         structure: item.strctCdNm || ""
       };
+      // 건축물대장이 실제로 값을 준 항목만 덮어쓴다 - 특정 항목을 비워서 응답하면(예: 연면적 "-")
+      // 자료 불러오기로 이미 채워둔 값을 빈 값으로 지워버리지 않도록 보존한다.
+      if (fetched.buildingType) $("#siteBuildingType").value = fetched.buildingType;
+      if (fetched.area) $("#siteArea").value = fetched.area;
+      if (fetched.floorInfo) $("#siteFloorInfo").value = fetched.floorInfo;
+      if (fetched.approvalDate) $("#siteApprovalDate").value = fetched.approvalDate;
+      if (fetched.structure) $("#siteStructure").value = fetched.structure;
       resultBox.innerHTML = `
         <div class="report-meta-row"><span class="label">대장구분</span><span>${escapeHtml(item.regstrKindCdNm || "-")}</span></div>
         <div class="report-meta-row"><span class="label">건물명</span><span>${escapeHtml(item.bldNm || "-")}</span></div>
@@ -175,16 +265,9 @@
         <div class="report-meta-row"><span class="label">층수</span><span>${escapeHtml(fetched.floorInfo || "-")}</span></div>
         <div class="report-meta-row"><span class="label">구조</span><span>${escapeHtml(fetched.structure || "-")}</span></div>
         <div class="report-meta-row"><span class="label">사용승인일</span><span>${escapeHtml(fetched.approvalDate || "-")}</span></div>
-        <button class="btn btn-primary bldreg-actions" id="btnApplyBldReg" type="button">이 정보로 채우기</button>
+        <div class="hint-text">건축물대장 정보로 자동으로 채웠습니다. 내용이 다르면 직접 수정해주세요.</div>
       `;
-      $("#btnApplyBldReg").addEventListener("click", () => {
-        $("#siteBuildingType").value = fetched.buildingType;
-        $("#siteArea").value = fetched.area;
-        $("#siteFloorInfo").value = fetched.floorInfo;
-        $("#siteApprovalDate").value = fetched.approvalDate;
-        $("#siteStructure").value = fetched.structure;
-        toast("건축물대장 정보로 채워졌습니다.");
-      });
+      toast("건축물대장 정보를 자동으로 불러왔습니다.");
     } catch (err) {
       let msg = "건축물대장 조회 중 오류가 발생했습니다.";
       if (String(err.message).startsWith("juso_")) msg = "주소 검색(도로명주소 API) 조회에 실패했습니다. 주소나 API 키를 확인해주세요.";
@@ -192,6 +275,19 @@
       else if (err.name === "TypeError") msg = "네트워크 요청이 브라우저 보안 정책(CORS)에 막혔을 수 있습니다. 정부24에서 직접 열람해주세요.";
       resultBox.innerHTML = `<div class="bldreg-error">${escapeHtml(msg)}</div><button class="btn btn-secondary bldreg-actions" id="btnOpenGov24" type="button">정부24에서 건축물대장 열람 열기</button>`;
       $("#btnOpenGov24").addEventListener("click", () => window.open("https://www.gov.kr/mw/AA020InfoCappView.do?HighCtgCD=A01015&CappBizCD=13100000015", "_blank"));
+    }
+  }
+
+  $("#btnLookupBldReg").addEventListener("click", () => {
+    lastAutoBldRegAddress = $("#siteAddress").value.trim();
+    lookupBldRegForCurrentAddress();
+  });
+
+  $("#siteAddress").addEventListener("blur", () => {
+    const address = $("#siteAddress").value.trim();
+    if (address && address !== lastAutoBldRegAddress) {
+      lastAutoBldRegAddress = address;
+      lookupBldRegForCurrentAddress();
     }
   });
 
@@ -209,6 +305,15 @@
       ${site.floorInfo ? `<div class="report-meta-row"><span class="label">층수</span><span>${escapeHtml(site.floorInfo)}</span></div>` : ""}
       ${site.structure ? `<div class="report-meta-row"><span class="label">구조</span><span>${escapeHtml(site.structure)}</span></div>` : ""}
       ${site.approvalDate ? `<div class="report-meta-row"><span class="label">사용승인일</span><span>${escapeHtml(site.approvalDate)}</span></div>` : ""}
+      ${site.fireManagerName ? `<div class="report-meta-row"><span class="label">소방안전관리자</span><span>${escapeHtml(site.fireManagerName)}${site.fireManagerPhone ? " · " + escapeHtml(site.fireManagerPhone) : ""}</span></div>` : ""}
+      ${site.fireManagerAppointDate ? `<div class="report-meta-row"><span class="label">선임일자</span><span>${escapeHtml(site.fireManagerAppointDate)}</span></div>` : ""}
+      ${site.fireManagerEduDate ? `<div class="report-meta-row"><span class="label">교육일자</span><span>${escapeHtml(site.fireManagerEduDate)}</span></div>` : ""}
+      ${site.engineerName ? `<div class="report-meta-row"><span class="label">담당기사</span><span>${escapeHtml(site.engineerName)}${site.engineerPhone ? " · " + escapeHtml(site.engineerPhone) : ""}</span></div>` : ""}
+      ${site.receiverLocation ? `<div class="report-meta-row"><span class="label">수신기 위치</span><span>${escapeHtml(site.receiverLocation)}</span></div>` : ""}
+      ${site.receiverAccess ? `<div class="report-meta-row"><span class="label">수신기 접근방법</span><span>${escapeHtml(site.receiverAccess)}</span></div>` : ""}
+      ${site.pumpRoomLocation ? `<div class="report-meta-row"><span class="label">펌프실 위치</span><span>${escapeHtml(site.pumpRoomLocation)}</span></div>` : ""}
+      ${site.pumpRoomAccess ? `<div class="report-meta-row"><span class="label">펌프실 접근방법</span><span>${escapeHtml(site.pumpRoomAccess)}</span></div>` : ""}
+      ${site.equipmentMemo ? `<div class="report-meta-row"><span class="label">메모</span><span>${escapeHtml(site.equipmentMemo)}</span></div>` : ""}
       ${site.notes ? `<div class="report-meta-row"><span class="label">비고</span><span>${escapeHtml(site.notes)}</span></div>` : ""}
     `;
     const inspections = await FireDB.getInspectionsBySite(id);
@@ -238,8 +343,21 @@
     $("#siteFloorInfo").value = site.floorInfo || "";
     $("#siteApprovalDate").value = site.approvalDate || "";
     $("#siteStructure").value = site.structure || "";
+    $("#siteFireManagerName").value = site.fireManagerName || "";
+    $("#siteFireManagerPhone").value = site.fireManagerPhone || "";
+    $("#siteFireManagerAppointDate").value = site.fireManagerAppointDate || "";
+    $("#siteFireManagerEduDate").value = site.fireManagerEduDate || "";
+    $("#siteEngineerName").value = site.engineerName || "";
+    $("#siteEngineerPhone").value = site.engineerPhone || "";
+    $("#siteReceiverLocation").value = site.receiverLocation || "";
+    $("#siteReceiverAccess").value = site.receiverAccess || "";
+    $("#sitePumpRoomLocation").value = site.pumpRoomLocation || "";
+    $("#sitePumpRoomAccess").value = site.pumpRoomAccess || "";
+    $("#siteEquipmentMemo").value = site.equipmentMemo || "";
     $("#siteNotes").value = site.notes || "";
     $("#bldRegResult").classList.add("hidden");
+    $("#importSummary").classList.add("hidden");
+    lastAutoBldRegAddress = site.address || "";
     showScreen("screen-site-form");
   });
 
@@ -1082,5 +1200,5 @@
   // ================= 초기화 =================
   $("#categoryList").innerHTML = ChecklistTemplate.map((g) => `<option value="${escapeHtml(g.category)}">`).join("");
   renderSites();
-  showScreen("screen-sites");
+  showScreen("screen-home");
 })();

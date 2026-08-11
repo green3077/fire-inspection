@@ -25,17 +25,70 @@ body {
   padding-bottom: 88px;
 }
 .app-header {
-  padding: 18px 16px;
-  text-align: center;
+  padding: 12px 12px;
   background: var(--accent);
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
-.app-header h1 { margin: 0; font-size: 22px; color: #fff; font-weight: 800; }
+.app-header h1 { margin: 0; font-size: 22px; color: #fff; font-weight: 800; flex: 1; text-align: center; cursor: pointer; }
+.header-btn {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.header-btn-back { background: rgba(255,255,255,0.15); color: #fff; }
+.header-btn-back:active { background: rgba(255,255,255,0.28); }
+.header-btn-save { background: #fff; color: var(--accent-dark); }
+.header-btn-save:active { background: var(--neutral-bg); }
+.header-btn-off { visibility: hidden; }
 
 #app { max-width: 560px; margin: 0 auto; padding: 14px; }
 
 .screen { display: none; }
 .screen.active { display: block; }
+#screen-home.active { display: flex; }
+
+.home-screen {
+  min-height: calc(100vh - 60px);
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+}
+.home-buttons {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.home-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  border-radius: 22px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.home-btn-icon { font-size: 48px; line-height: 1; }
+.home-btn-label { font-size: 28px; font-weight: 800; }
+.home-btn-primary { background: var(--accent); color: #fff; border: none; }
+.home-btn-primary:active { background: var(--accent-dark); }
+.home-btn-secondary { background: #fff; border: 3px solid var(--accent); color: var(--accent-dark); }
+.home-btn-secondary:active { background: var(--neutral-bg); }
 
 .card {
   background: var(--card-bg);

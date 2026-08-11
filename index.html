@@ -7,8 +7,10 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="app-header">
-  <h1>🧯 소방점검 관리</h1>
+<header class="app-header" id="appHeader">
+  <button class="header-btn header-btn-back header-btn-off" id="btnHeaderBack" type="button">← 뒤로</button>
+  <h1 id="appHeaderTitle">🧯 소방점검 관리</h1>
+  <button class="header-btn header-btn-save header-btn-off" id="btnHeaderSave" type="button">저장</button>
 </header>
 
 <div id="toastContainer" class="toast-container no-print"></div>
@@ -25,6 +27,31 @@
 
 <div id="app">
 
+  <!-- 홈 (첫 화면) -->
+  <section id="screen-home" class="screen home-screen">
+    <div class="home-buttons">
+      <button class="home-btn home-btn-primary" id="btnHomeAddSite">
+        <span class="home-btn-icon">🏢</span>
+        <span class="home-btn-label">거래처 등록</span>
+      </button>
+      <button class="home-btn home-btn-secondary" id="btnHomeViewSites">
+        <span class="home-btn-icon">📋</span>
+        <span class="home-btn-label">거래처 보기</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 거래처 등록 방법 선택 -->
+  <section id="screen-site-entry-choice" class="screen">
+    <div class="card">
+      <h2>거래처 등록</h2>
+      <div class="hint-text">직접 입력하거나, 가지고 있는 자료(엑셀·워드·PDF·한글·사진)에서 정보를 자동으로 불러올 수 있습니다.</div>
+    </div>
+    <button class="btn btn-primary btn-large" id="btnEntryManual">✏️ 직접 입력</button>
+    <button class="btn btn-secondary btn-large" id="btnEntryImport">📎 자료 불러오기</button>
+    <button class="btn btn-secondary" id="btnCancelEntryChoice">← 취소</button>
+  </section>
+
   <!-- 현장 목록 -->
   <section id="screen-sites" class="screen">
     <div class="section-actions">
@@ -37,13 +64,15 @@
   <section id="screen-site-form" class="screen">
     <div class="card">
       <h2 id="siteFormTitle">현장 추가</h2>
-      <div class="field"><span>현장명 *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
+      <div id="importSummary" class="hint-text hidden"></div>
+      <div class="field"><span>현장명(거래처명) *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
       <div class="field"><span>주소</span><input type="text" id="siteAddress" placeholder="예: 서울시 강남구 ..."></div>
       <button class="btn btn-secondary" id="btnLookupBldReg" type="button">🏢 건축물대장 조회</button>
+      <div class="hint-text">주소를 입력하고 다른 칸으로 넘어가면 건축물대장(연면적·주용도·사용승인일·층수)을 자동으로 불러옵니다.</div>
       <div id="bldRegResult" class="bldreg-result hidden"></div>
       <div class="field-row">
         <div class="field"><span>담당자명</span><input type="text" id="siteContactName"></div>
-        <div class="field"><span>연락처</span><input type="text" id="siteContactPhone" placeholder="010-0000-0000"></div>
+        <div class="field"><span>담당자 연락처</span><input type="text" id="siteContactPhone" placeholder="010-0000-0000"></div>
       </div>
       <div class="field-row">
         <div class="field"><span>건물 용도</span><input type="text" id="siteBuildingType" placeholder="예: 근린생활시설"></div>
@@ -54,7 +83,32 @@
         <div class="field"><span>사용승인일</span><input type="text" id="siteApprovalDate" placeholder="예: 2010-05-01"></div>
       </div>
       <div class="field"><span>구조</span><input type="text" id="siteStructure" placeholder="예: 철근콘크리트구조"></div>
+
+      <h2 class="list-heading">소방안전관리자</h2>
+      <div class="field-row">
+        <div class="field"><span>성명</span><input type="text" id="siteFireManagerName"></div>
+        <div class="field"><span>연락처</span><input type="text" id="siteFireManagerPhone" placeholder="010-0000-0000"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>선임일자</span><input type="text" id="siteFireManagerAppointDate" placeholder="예: 2024-01-01"></div>
+        <div class="field"><span>교육일자</span><input type="text" id="siteFireManagerEduDate" placeholder="예: 2024-03-01"></div>
+      </div>
+
+      <h2 class="list-heading">담당기사</h2>
+      <div class="field-row">
+        <div class="field"><span>성명</span><input type="text" id="siteEngineerName"></div>
+        <div class="field"><span>연락처</span><input type="text" id="siteEngineerPhone" placeholder="010-0000-0000"></div>
+      </div>
+
       <div class="field"><span>비고</span><textarea id="siteNotes" rows="3"></textarea></div>
+
+      <h2 class="list-heading">소방설비 위치</h2>
+      <div class="field"><span>수신기 위치</span><input type="text" id="siteReceiverLocation" placeholder="예: 1층 방재실"></div>
+      <div class="field"><span>수신기 접근방법</span><textarea id="siteReceiverAccess" rows="2" placeholder="예: 정문 출입 후 좌측 계단으로 지하1층"></textarea></div>
+      <div class="field"><span>펌프실 위치</span><input type="text" id="sitePumpRoomLocation" placeholder="예: 지하 1층 기계실"></div>
+      <div class="field"><span>펌프실 접근방법</span><textarea id="sitePumpRoomAccess" rows="2"></textarea></div>
+      <div class="field"><span>메모</span><textarea id="siteEquipmentMemo" rows="3" placeholder="소방설비 관련 추가 메모"></textarea></div>
+
       <button class="btn btn-primary" id="btnSaveSite">저장</button>
       <button class="btn btn-secondary" id="btnCancelSiteForm">취소</button>
     </div>
@@ -183,6 +237,7 @@
 </nav>
 
 <input type="file" id="dataImportInput" accept=".xlsx,.xls,.docx,.pdf" class="hidden">
+<input type="file" id="clientImportInput" accept=".xlsx,.xls,.docx,.pdf,.hwp,.jpg,.jpeg,.png,.webp,.bmp" class="hidden">
 <datalist id="categoryList"></datalist>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -192,6 +247,7 @@
 <script src="checklist-data.js"></script>
 <script src="ui.js"></script>
 <script src="import.js"></script>
+<script src="client-import.js"></script>
 <script src="bldreg.js"></script>
 <script src="app.js"></script>
 </body>

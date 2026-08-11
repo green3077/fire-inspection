@@ -91,7 +91,7 @@ const FireImport = (() => {
     return null;
   }
 
-  async function parsePdfFile(file) {
+  async function extractPdfRows(file) {
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     }
@@ -138,9 +138,14 @@ const FireImport = (() => {
     }
 
     const lowConfidence = totalChars === 0 || replacementChars / Math.max(totalChars, 1) > 0.05;
+    return { rows: allRows, lowConfidence };
+  }
+
+  async function parsePdfFile(file) {
+    const { rows: allRows, lowConfidence } = await extractPdfRows(file);
     const rows = rowsToDeficiencies(allRows);
     return { rows, lowConfidence };
   }
 
-  return { parseExcelFile, parseWordFile, parsePdfFile, rowsToDeficiencies };
+  return { parseExcelFile, parseWordFile, parsePdfFile, extractPdfRows, rowsToDeficiencies };
 })();
