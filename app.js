@@ -247,15 +247,25 @@
     });
 
     const list = $("#sitesList");
+    const summary = $("#sitesSummary");
     if (sites.length === 0) {
+      summary.textContent = "";
       list.innerHTML = `<div class="empty-state">등록된 현장이 없습니다.<br>현장을 추가해 점검을 시작하세요.</div>`;
       return;
     }
 
     if (sitesSortMode === "region") {
+      if (sitesSelectedRegion) {
+        const inRegion = sites.filter((s) => classifyRegion(s.address) === sitesSelectedRegion).length;
+        summary.innerHTML = `<strong>${sitesSelectedRegion}</strong> ${inRegion}개 · 전체 ${sites.length}개`;
+      } else {
+        const regionCount = new Set(sites.map((s) => classifyRegion(s.address))).size;
+        summary.innerHTML = `전체 <strong>${sites.length}개</strong> 거래처 · ${regionCount}개 지역`;
+      }
       renderSitesByRegion(sites, lastBySite);
       return;
     }
+    summary.innerHTML = `전체 <strong>${sites.length}개</strong> 거래처`;
     renderSiteCardsInto(list, sites, lastBySite, "등록된 현장이 없습니다.");
   }
 
