@@ -114,7 +114,9 @@
     for (let i = 1; i < tokens.length; i++) {
       const t = tokens[i].replace(/[^가-힣]/g, "");
       if (/^[가-힣]{2,}(시|군)$/.test(t) && !/(특별시|광역시|특별자치시|특별자치도)$/.test(t)) {
-        return `${t}소방서`;
+        // 실제 소방서 명칭은 "OO시소방서"가 아니라 "시/군" 접미사를 뗀 "OO소방서" 형태이므로
+        // (예: "경산시" -> "경산소방서", "경산시소방서" 아님) 여기서 접미사를 제거한다.
+        return `${t.replace(/(시|군)$/, "")}소방서`;
       }
     }
     return "";
@@ -1403,9 +1405,6 @@
       }).join("");
     }
 
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
-
     const siteName = site ? site.name || "-" : "-";
     const siteType = site ? site.buildingType || "-" : "-";
     const siteAddr = site ? site.address || "-" : "-";
@@ -1416,12 +1415,10 @@
     const fireStation = site ? (site.fireStation || guessFireStation(site.address)) : "";
     const fireStationLine = fireStation ? `${escapeHtml(fireStation)}장 귀하` : "○○ 소방본부장ㆍ소방서장 귀하";
 
-    const detailRowsHtml = resolved.map((def, idx) => `
+    const detailRowsHtml = resolved.map((def) => `
       <tr>
-        <td class="did-no">${idx + 1}</td>
         <td class="did-content">
           <strong>${escapeHtml([def.floor, def.location].filter(Boolean).join(" "))}</strong>
-          ${def.code ? `<div class="report-item-note">점검번호: ${escapeHtml(def.code)}</div>` : ""}
           <div class="report-item-note">${escapeHtml(def.description)}</div>
         </td>
         <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
@@ -1487,7 +1484,7 @@
         </p>
 
         <div class="official-form-sign">
-          <div>${todayStr}</div>
+          <div>　　년　　월　　일</div>
           <div>관계인: ${escapeHtml(contactName || "")}　　　　　(서명 또는 인)</div>
           <div>${fireStationLine}</div>
         </div>
@@ -1510,14 +1507,20 @@
         <div class="official-page-break">
           <div class="official-form-title">지적내역서 (대상물: ${escapeHtml(siteName)})</div>
           <table class="completion-table">
+            <colgroup>
+              <col class="did-content">
+              <col class="did-photo">
+              <col class="did-photo">
+            </colgroup>
             <thead>
               <tr>
-                <th class="did-no">번호</th>
-                <th class="did-content">이행조치 내용</th>
-                <th class="did-photo" colspan="2">이행완료 보고서 증빙자료</th>
+                <th colspan="3">이행완료 보고서 증빙자료</th>
               </tr>
               <tr>
-                <th colspan="2" class="official-table-note">1. 이행 조치 건별 전ㆍ후 사진&nbsp;&nbsp; 2. 공사계약서 등 증빙서류 첨부(별첨)</th>
+                <th class="did-content did-result-label" rowspan="2">이행결과</th>
+                <th class="did-photo official-table-note" colspan="2">1. 이행 조치 건별 전ㆍ후 사진<br>2. 공사계약서 등 증빙서류 첨부(별첨)</th>
+              </tr>
+              <tr>
                 <th class="did-photo">이행 전</th>
                 <th class="did-photo">이행 후</th>
               </tr>

@@ -122,16 +122,7 @@ const HwpxExport = (() => {
     // 이행조치 일자 - 첫 번째 ". . . ~ . . ." 자리만 실제 날짜로 교체
     replaceNthMatchingText(doc, (s) => /^[.\s∼~]+$/.test(s) && s.includes("."), 0, () => data.dateRange || "");
 
-    // 년/월/일 서명일자 줄 - 공백이 긴 "...년...월...일" 형태의 유일한 줄
-    replaceNthMatchingText(
-      doc,
-      (s) => s.includes("년") && s.includes("월") && s.includes("일") && /\s{5,}/.test(s),
-      0,
-      () => {
-        const now = new Date();
-        return `                                                        ${now.getFullYear()}년    ${now.getMonth() + 1}월    ${now.getDate()}일`;
-      }
-    );
+    // 년/월/일 서명일자(제출 날짜) 줄은 실제 제출 시점에 손으로 적도록 공란으로 남겨둔다(자동 채움 없음).
 
     // 관계인: (서명란) - "관계인:" 뒤에 공백으로 채워진 유일한 줄
     replaceNthMatchingText(doc, (s) => s.includes("관계인:") && s.trim().length > "관계인:".length, 0, (orig) =>
@@ -225,15 +216,31 @@ const HwpxExport = (() => {
     return pic;
   }
 
-  async function getImagePixelSize(blob) {
+  // 사진 파일을 캔버스에 다시 그려 픽셀 데이터를 얻는다. 카메라 사진은 원본 바이트가 항상 "가로"로
+  // 저장되고 EXIF Orientation 태그로 실제 회전을 표시하는 경우가 많은데, 브라우저의 <img>는 이를 반영해
+  // 정방향으로 그려주는 반면 한글(HWPX)은 이 태그를 무시하고 원본 바이트를 그대로 표시해 일부 사진이
+  // 90도 돌아간 채 들어가는 원인이 된다. 화면에 보이는 그대로(회전 반영 완료) 새로 인코딩해 내보내면
+  // 뷰어가 EXIF를 읽든 안 읽든 항상 올바른 방향으로 보인다.
+  async function normalizeImagePhoto(blob) {
     const url = URL.createObjectURL(blob);
     try {
-      return await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-        img.onerror = () => reject(new Error("image_decode_failed"));
-        img.src = url;
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("image_decode_failed"));
+        image.src = url;
       });
+      const width = img.naturalWidth;
+      const height = img.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      const outType = blob.type === "image/png" ? "image/png" : "image/jpeg";
+      const outBlob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_encode_failed"))), outType, 0.92);
+      });
+      return { blob: outBlob, width, height };
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -254,9 +261,9 @@ const HwpxExport = (() => {
       return;
     }
 
-    let width, height;
+    let width, height, normalizedBlob;
     try {
-      ({ width, height } = await getImagePixelSize(blob));
+      ({ blob: normalizedBlob, width, height } = await normalizeImagePhoto(blob));
     } catch (err) {
       // HEIC(아이폰 기본 사진 형식) 등 브라우저가 디코딩하지 못하는 이미지가 섞여 있으면 크기를 잴 수 없다 -
       // 이 사진 한 장만 건너뛰고 나머지 보고서는 정상 생성한다.
@@ -272,11 +279,11 @@ const HwpxExport = (() => {
     const hwpWidth = Math.max(1000, Math.round(width * scale));
     const hwpHeight = Math.max(1000, Math.round(height * scale));
 
-    const ext = blob.type === "image/png" ? "png" : "jpg";
-    const mediaType = blob.type === "image/png" ? "image/png" : "image/jpeg";
+    const ext = normalizedBlob.type === "image/png" ? "png" : "jpg";
+    const mediaType = normalizedBlob.type === "image/png" ? "image/png" : "image/jpeg";
     const imageIndex = ++imageState.count;
     const binaryId = `image${imageIndex}`;
-    const buf = await blob.arrayBuffer();
+    const buf = await normalizedBlob.arrayBuffer();
     imageState.zip.file(`BinData/${binaryId}.${ext}`, buf);
     imageState.manifestItems.push({ id: binaryId, href: `BinData/${binaryId}.${ext}`, mediaType });
 
@@ -322,7 +329,6 @@ const HwpxExport = (() => {
       });
 
       const lines = [[def.floor, def.location].filter(Boolean).join(" ") || `${i + 1}번 항목`];
-      if (def.code) lines.push(`점검번호: ${def.code}`);
       lines.push(def.description || "");
       clearCellAndSetLines(contentTc, lines, "47");
 
