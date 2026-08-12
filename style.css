@@ -514,7 +514,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .completion-table th { background: var(--neutral-bg); color: var(--accent-dark); font-weight: 800; text-align: center; }
 .completion-loc { width: 22%; }
 .completion-photo-cell { width: 37%; text-align: center; }
-.completion-photo-cell img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; }
+.completion-photo-cell img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  margin: 0 auto 6px;
+}
 .completion-photo-cell .no-photo { color: var(--text-dim); font-size: 13px; padding: 30px 0; }
 
 .did-no { width: 9%; text-align: center; }
