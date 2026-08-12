@@ -4,12 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>소방점검 관리</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="app-header" id="appHeader">
   <button class="header-btn header-btn-back" id="btnHeaderBack" type="button">← 뒤로</button>
-  <h1 id="appHeaderTitle">🧯 소방점검 관리</h1>
+  <h1 id="appHeaderTitle"><span class="brand-main">소방점검</span><span class="brand-sub">관리</span></h1>
   <button class="header-btn header-btn-home" id="btnHeaderHome" type="button">처음으로</button>
 </header>
 
@@ -43,7 +44,7 @@
         <span class="home-tile-label">공사팀</span>
       </button>
       <button class="home-tile" id="btnHomeInspectionTeam">
-        <span class="home-tile-icon">🧯</span>
+        <span class="home-tile-icon">🛡️</span>
         <span class="home-tile-label">점검팀</span>
       </button>
       <button class="home-tile home-tile-wide" id="btnHomeDeficiencies">
@@ -73,7 +74,7 @@
   <!-- 점검팀 (준비중) -->
   <section id="screen-inspection-team" class="screen">
     <div class="card">
-      <h2>🧯 점검팀</h2>
+      <h2>🛡️ 점검팀</h2>
       <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
     </div>
     <button class="btn btn-secondary" id="btnBackFromInspectionTeam">← 홈으로</button>

@@ -119,7 +119,7 @@
       const isOverdue = insp.scheduledDate < today;
       return `
         <div class="home-todo-item ${isOverdue ? "is-overdue" : ""}" data-site-id="${insp.siteId}">
-          <span class="home-todo-item-icon">${isOverdue ? "⚠️" : "🧯"}</span>
+          <span class="home-todo-item-icon">${isOverdue ? "⚠️" : "🔔"}</span>
           <div class="home-todo-item-body">
             <div class="home-todo-item-title">${escapeHtml(site ? site.name : "알 수 없는 현장")}</div>
             <div class="home-todo-item-sub">${escapeHtml(insp.type || "점검")} · ${isOverdue ? `기한초과 (${escapeHtml(insp.scheduledDate)})` : "오늘 예정"}</div>
