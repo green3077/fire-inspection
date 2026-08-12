@@ -1449,8 +1449,8 @@
             <strong>${escapeHtml([def.floor, def.location].filter(Boolean).join(" "))}</strong>
             <div class="report-item-note">${escapeHtml(def.description)}</div>
           </td>
-          <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
-          <td class="did-photo completion-photo-cell">${photoCellHtml(def, "after")}</td>
+          <td class="did-photo completion-photo-cell" data-photo-label="이행 전">${photoCellHtml(def, "before")}</td>
+          <td class="did-photo completion-photo-cell" data-photo-label="이행 후">${photoCellHtml(def, "after")}</td>
         </tr>
       `).join("");
       const pageLabel = detailChunks.length > 1 ? ` (${idx + 1}/${detailChunks.length}쪽)` : "";

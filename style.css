@@ -547,9 +547,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .completion-table th.did-result-label { vertical-align: middle; text-align: center; }
 
 /* 이행완료 보고서 - 별지 제11호서식 (실제 hwpx 샘플의 글자크기/줄간격 값에 맞춤: 표 10pt/150~160%, 제목 16pt bold, 안내문 10pt/160%) */
-/* 모바일 화면폭(보통 330~400px)에서는 표의 고정 라벨 칸(88px/100px)이 데이터 칸을 극단적으로
-   압축해 줄바꿈이 들쭉날쭉해진다 - 화면마다 다르게 찌그러뜨리는 대신 문서 원본 비율(min-width)을
-   항상 유지하고, 좁은 화면에서는 좌우 스크롤로 보게 한다(PC/모바일 어디서나 표 모양이 동일해짐). */
+/* PC 화면/인쇄/PDF는 문서 원본 비율(min-width 700px)의 표 그대로 보여준다. 좁은 화면(휴대폰)은
+   아래 @media (max-width: 600px) 블록에서 표를 라벨-값이 한 줄씩 쌓이는 목록형으로 완전히
+   바꿔치기해서 가로 스크롤 없이 읽히게 한다 - 표를 그대로 축소하면 라벨 칸이 내용을 짓눌러
+   줄바꿈이 들쭉날쭉해지므로, 좁은 화면 전용으로 아예 다른 레이아웃을 적용하는 편이 낫다. */
 #completionReportContent { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .official-form { max-width: 820px; min-width: 700px; margin: 0 auto; font-family: "Dotum", "돋움", "Malgun Gothic", sans-serif; }
 .official-form-topnote { text-align: right; font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
@@ -582,6 +583,46 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .report-pager .btn { width: auto; padding: 10px 20px; margin-top: 0; }
 .report-pager span { font-size: 16px; font-weight: 800; color: var(--accent-dark); min-width: 60px; text-align: center; }
 .report-pager.hidden { display: none; }
+
+/* 좁은 화면(휴대폰)용 이행완료 보고서 - 표를 라벨-값이 한 줄씩 쌓이는 목록형으로 바꿔서
+   가로 스크롤 없이 화면 폭에 딱 맞게 보이도록 한다. 인쇄/PDF(@media print)에는 영향 없음 -
+   그쪽은 별도로 항상 문서 원본 표 형태를 강제한다. */
+@media screen and (max-width: 600px) {
+  #completionReportContent { overflow-x: hidden; }
+  .official-form { min-width: 0; max-width: 100%; }
+
+  .official-table, .official-table tr, .official-table td { display: block; width: 100% !important; }
+  .official-table { margin-bottom: 16px; }
+  .official-table td { border: none; border-bottom: 1px solid var(--border); }
+  .official-table tr:last-child td { border-bottom: none; }
+  .official-table .section-label {
+    text-align: left; width: auto; border-radius: 8px 8px 0 0; margin-top: 4px;
+    font-size: 14.6px; padding: 8px 10px;
+  }
+  .official-table .field-label {
+    text-align: left; width: auto; font-size: 12.5px; padding: 8px 10px 2px; border-bottom: none;
+  }
+  .official-table .field-label + td { padding-top: 0; }
+
+  .completion-table, .completion-table tbody, .completion-table tr, .completion-table td { display: block; width: 100% !important; }
+  .completion-table thead { display: none; }
+  .completion-table { border: none; }
+  .completion-table tbody tr {
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px;
+  }
+  .completion-table td { border: none; border-top: 1px solid var(--border); }
+  .completion-table tbody tr td:first-child { border-top: none; }
+  .did-content { background: var(--neutral-bg); }
+  .completion-photo-cell { text-align: left; }
+  .completion-photo-cell[data-photo-label]::before {
+    content: attr(data-photo-label);
+    display: block; font-weight: 800; color: var(--accent-dark); margin-bottom: 8px; font-size: 13px;
+  }
+  .completion-photo-cell img { max-height: 280px; margin: 0 0 6px; }
+  .completion-photo-cell .no-photo { padding: 6px 0; text-align: left; }
+
+  .official-form-legal, .official-form-sign, .official-form-note { font-size: 13px; }
+}
 
 @media print {
   .no-print, .tab-bar, .app-header { display: none !important; }
