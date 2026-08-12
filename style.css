@@ -462,7 +462,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   word-break: keep-all;
   overflow-wrap: break-word;
 }
-.completion-table th { background: var(--neutral-bg); color: var(--accent-dark); font-weight: 800; }
+.completion-table th { background: var(--neutral-bg); color: var(--accent-dark); font-weight: 800; text-align: center; }
 .completion-loc { width: 22%; }
 .completion-photo-cell { width: 37%; text-align: center; }
 .completion-photo-cell img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; }
@@ -486,7 +486,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   word-break: keep-all; overflow-wrap: break-word;
 }
 .official-table .section-label { background: var(--neutral-bg); font-weight: 800; text-align: center; width: 88px; color: var(--accent-dark); }
-.official-table .field-label { background: var(--neutral-bg); font-weight: 700; width: 100px; color: var(--text-dim); }
+.official-table .field-label { background: var(--neutral-bg); font-weight: 700; width: 100px; color: var(--text-dim); text-align: center; }
 .official-table .nowrap { white-space: nowrap; }
 .official-form-legal { font-size: 13.3px; line-height: 1.6; margin: 18px 0; text-align: justify; }
 .official-form-sign { text-align: center; font-size: 14.6px; margin: 22px 0; line-height: 1.7; }
