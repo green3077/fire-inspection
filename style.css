@@ -531,7 +531,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .completion-table th.did-result-label { vertical-align: middle; text-align: center; }
 
 /* 이행완료 보고서 - 별지 제11호서식 (실제 hwpx 샘플의 글자크기/줄간격 값에 맞춤: 표 10pt/150~160%, 제목 16pt bold, 안내문 10pt/160%) */
-.official-form { max-width: 820px; margin: 0 auto; font-family: "Dotum", "돋움", "Malgun Gothic", sans-serif; }
+/* 모바일 화면폭(보통 330~400px)에서는 표의 고정 라벨 칸(88px/100px)이 데이터 칸을 극단적으로
+   압축해 줄바꿈이 들쭉날쭉해진다 - 화면마다 다르게 찌그러뜨리는 대신 문서 원본 비율(min-width)을
+   항상 유지하고, 좁은 화면에서는 좌우 스크롤로 보게 한다(PC/모바일 어디서나 표 모양이 동일해짐). */
+#completionReportContent { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.official-form { max-width: 820px; min-width: 700px; margin: 0 auto; font-family: "Dotum", "돋움", "Malgun Gothic", sans-serif; }
 .official-form-topnote { text-align: right; font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
 .official-form-title {
   text-align: center; font-size: 21.3px; font-weight: 800; color: var(--accent-dark); margin-bottom: 18px;
@@ -557,6 +561,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .no-print, .tab-bar, .app-header { display: none !important; }
   body { background: #fff; color: #000; padding-bottom: 0; }
   #app { max-width: 100%; }
+  #completionReportContent { overflow-x: visible; }
+  .official-form { min-width: 0; max-width: 100%; }
   .report-meta, .checklist-item, .report-overall { background: #fff; border-color: #ccc; }
   .report-item { color: #000; }
   .report-item-note { color: #444; }
