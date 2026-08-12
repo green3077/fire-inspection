@@ -134,12 +134,13 @@ body {
 .home-todo-date { font-size: 14.5px; color: var(--gold); font-weight: 700; }
 .home-todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px 4px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
+.home-todo-item .home-todo-item-icon { margin-top: 2px; }
 .home-todo-item:last-child { border-bottom: none; }
 .home-todo-item-icon {
   flex-shrink: 0;
@@ -157,6 +158,16 @@ body {
 .home-todo-item-body { flex: 1; min-width: 0; }
 .home-todo-item-title { font-size: 15.5px; font-weight: 700; }
 .home-todo-item-sub { font-size: 13.5px; color: var(--text-dim); margin-top: 2px; }
+.home-todo-item-memo {
+  font-size: 13.5px;
+  color: var(--accent-dark);
+  background: var(--gold-bg);
+  border-radius: 8px;
+  padding: 6px 9px;
+  margin-top: 6px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
 .home-todo-empty { text-align: center; color: var(--text-dim); padding: 20px 10px; font-size: 15px; }
 
 .card {

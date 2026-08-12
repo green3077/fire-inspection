@@ -150,6 +150,7 @@
 
     const [inspections, sites] = await Promise.all([FireDB.getAllInspections(), FireDB.getAllSites()]);
     const siteMap = new Map(sites.map((s) => [s.id, s]));
+    const lastBySite = computeLastInspectionBySite(inspections);
     const pending = inspections.filter((i) => i.status !== "completed" && i.scheduledDate && i.scheduledDate <= today);
     pending.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
@@ -161,12 +162,16 @@
     list.innerHTML = pending.map((insp) => {
       const site = siteMap.get(insp.siteId);
       const isOverdue = insp.scheduledDate < today;
+      const last = site ? lastBySite.get(site.id) : null;
+      const lastDate = last ? (last.completedDate || last.scheduledDate) : "";
       return `
         <div class="home-todo-item ${isOverdue ? "is-overdue" : ""}" data-site-id="${insp.siteId}">
           <span class="home-todo-item-icon">${isOverdue ? "⚠️" : "🔔"}</span>
           <div class="home-todo-item-body">
             <div class="home-todo-item-title">${escapeHtml(site ? site.name : "알 수 없는 현장")}</div>
             <div class="home-todo-item-sub">${escapeHtml(insp.type || "점검")} · ${isOverdue ? `기한초과 (${escapeHtml(insp.scheduledDate)})` : "오늘 예정"}</div>
+            <div class="home-todo-item-sub">마지막 점검일: ${lastDate ? escapeHtml(lastDate) : "이력 없음"}</div>
+            ${site && site.equipmentMemo ? `<div class="home-todo-item-memo">📝 ${escapeHtml(site.equipmentMemo)}</div>` : ""}
           </div>
         </div>
       `;
@@ -278,17 +283,24 @@
     });
   }
 
-  async function renderSites() {
-    const [sites, inspections] = await Promise.all([FireDB.getAllSites(), FireDB.getAllInspections()]);
-    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
-
+  // "마지막 점검일"은 실제로 완료된 점검만 대상으로 한다 - 아직 완료되지 않은 예정 건은 날짜가 더 미래라도 "마지막"이 아니다.
+  function computeLastInspectionBySite(inspections) {
     const lastBySite = new Map();
     inspections.forEach((insp) => {
+      if (insp.status !== "completed") return;
       const d = insp.completedDate || insp.scheduledDate || "";
       const cur = lastBySite.get(insp.siteId);
       const curD = cur ? (cur.completedDate || cur.scheduledDate || "") : "";
       if (!cur || d > curD) lastBySite.set(insp.siteId, insp);
     });
+    return lastBySite;
+  }
+
+  async function renderSites() {
+    const [sites, inspections] = await Promise.all([FireDB.getAllSites(), FireDB.getAllInspections()]);
+    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+    const lastBySite = computeLastInspectionBySite(inspections);
 
     const list = $("#sitesList");
     const summary = $("#sitesSummary");
