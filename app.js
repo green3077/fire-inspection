@@ -1156,6 +1156,7 @@
     const resolved = currentDeficiencies.filter((d) => d.resolved).length;
     $("#deficiencyHeader").innerHTML = `
       <h2>${escapeHtml(site ? site.name : "")} · 지적사항 관리</h2>
+      <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site && site.address ? site.address : "-")}</span></div>
       <div class="report-meta-row"><span class="label">미해결 / 해결</span><span>${open}건 / ${resolved}건</span></div>
     `;
 
