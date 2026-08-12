@@ -1,9 +1,14 @@
 * { box-sizing: border-box; }
 :root {
-  --bg: #f4f5f3;
+  /* 고급화: Modern Minimal - 다크 네이비 + 골드 포인트 + 웜 크림 배경 */
+  --bg: #f6f3ec;
   --card-bg: #ffffff;
-  --accent: #1d5a8c;
-  --accent-dark: #133f63;
+  --accent: #1e2733;
+  --accent-dark: #12161e;
+  --gold: #b8935a;
+  --gold-bg: #f4ead9;
+  --teal: #2d6a63;
+  --teal-bg: #e2efec;
   --text: #1a1a1a;
   --text-dim: #5a6169;
   --danger: #b23b3b;
@@ -13,7 +18,7 @@
   --warn: #9c6a06;
   --warn-bg: #fbf0d9;
   --neutral-bg: #eceef0;
-  --border: #d7dbdd;
+  --border: #e1dccf;
 }
 body {
   margin: 0;
@@ -61,34 +66,90 @@ body {
 
 .home-screen {
   min-height: calc(100vh - 60px);
-  align-items: center;
-  justify-content: center;
-  padding: 24px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 20px 14px;
+  gap: 22px;
 }
-.home-buttons {
-  width: 100%;
-  max-width: 420px;
+
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.home-tile {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-.home-btn {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 40px 20px;
-  border-radius: 22px;
+  gap: 10px;
+  padding: 28px 10px;
+  border-radius: 18px;
   cursor: pointer;
   font-family: inherit;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(18,22,30,0.06);
 }
-.home-btn-icon { font-size: 48px; line-height: 1; }
-.home-btn-label { font-size: 28px; font-weight: 800; }
-.home-btn-primary { background: var(--accent); color: #fff; border: none; }
-.home-btn-primary:active { background: var(--accent-dark); }
-.home-btn-secondary { background: #fff; border: 3px solid var(--accent); color: var(--accent-dark); }
-.home-btn-secondary:active { background: var(--neutral-bg); }
+.home-tile:active { background: var(--gold-bg); }
+.home-tile-icon {
+  font-size: 30px;
+  line-height: 1;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+.home-tile-label { font-size: 18px; font-weight: 800; color: var(--accent-dark); }
+
+.home-todo-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 2px 8px rgba(18,22,30,0.06);
+}
+.home-todo-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.home-todo-title { font-size: 18px; font-weight: 800; color: var(--accent-dark); }
+.home-todo-date { font-size: 14.5px; color: var(--gold); font-weight: 700; }
+.home-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.home-todo-item:last-child { border-bottom: none; }
+.home-todo-item-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--teal-bg);
+  color: var(--teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.home-todo-item.is-overdue .home-todo-item-icon { background: var(--danger-bg); color: var(--danger); }
+.home-todo-item-body { flex: 1; min-width: 0; }
+.home-todo-item-title { font-size: 15.5px; font-weight: 700; }
+.home-todo-item-sub { font-size: 13.5px; color: var(--text-dim); margin-top: 2px; }
+.home-todo-empty { text-align: center; color: var(--text-dim); padding: 20px 10px; font-size: 15px; }
 
 .card {
   background: var(--card-bg);

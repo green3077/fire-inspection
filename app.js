@@ -32,11 +32,55 @@
   }
 
   // ---------- 홈 ----------
-  $("#appHeaderTitle").addEventListener("click", () => showScreen("screen-home"));
+  const WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
+
+  async function renderHomeTodo() {
+    const today = todayISO();
+    const now = new Date();
+    $("#homeTodoDate").textContent = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 (${WEEKDAY_LABEL[now.getDay()]})`;
+
+    const [inspections, sites] = await Promise.all([FireDB.getAllInspections(), FireDB.getAllSites()]);
+    const siteMap = new Map(sites.map((s) => [s.id, s]));
+    const pending = inspections.filter((i) => i.status !== "completed" && i.scheduledDate && i.scheduledDate <= today);
+    pending.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+
+    const list = $("#homeTodoList");
+    if (pending.length === 0) {
+      list.innerHTML = `<div class="home-todo-empty">오늘 예정된 할일이 없습니다.</div>`;
+      return;
+    }
+    list.innerHTML = pending.map((insp) => {
+      const site = siteMap.get(insp.siteId);
+      const isOverdue = insp.scheduledDate < today;
+      return `
+        <div class="home-todo-item ${isOverdue ? "is-overdue" : ""}" data-site-id="${insp.siteId}">
+          <span class="home-todo-item-icon">${isOverdue ? "⚠️" : "🧯"}</span>
+          <div class="home-todo-item-body">
+            <div class="home-todo-item-title">${escapeHtml(site ? site.name : "알 수 없는 현장")}</div>
+            <div class="home-todo-item-sub">${escapeHtml(insp.type || "점검")} · ${isOverdue ? `기한초과 (${escapeHtml(insp.scheduledDate)})` : "오늘 예정"}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    $$("#homeTodoList .home-todo-item").forEach((el) => {
+      el.addEventListener("click", () => openSiteChecklist(el.dataset.siteId));
+    });
+  }
+
+  async function goHome() {
+    showScreen("screen-home");
+    await renderHomeTodo();
+  }
+
+  $("#appHeaderTitle").addEventListener("click", goHome);
   $("#btnHeaderBack").addEventListener("click", () => $("#btnCancelSiteForm").click());
   $("#btnHeaderSave").addEventListener("click", () => $("#btnSaveSite").click());
   $("#btnHomeAddSite").addEventListener("click", () => $("#btnAddSite").click());
   $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
+  $("#btnHomeConstructionTeam").addEventListener("click", () => showScreen("screen-construction-team"));
+  $("#btnHomeInspectionTeam").addEventListener("click", () => showScreen("screen-inspection-team"));
+  $("#btnBackFromConstructionTeam").addEventListener("click", goHome);
+  $("#btnBackFromInspectionTeam").addEventListener("click", goHome);
 
   // ---------- 탭 ----------
   $$(".tab-btn").forEach((btn) => {
@@ -1458,4 +1502,5 @@
   $("#categoryList").innerHTML = ChecklistTemplate.map((g) => `<option value="${escapeHtml(g.category)}">`).join("");
   renderSites();
   showScreen("screen-home");
+  renderHomeTodo();
 })();

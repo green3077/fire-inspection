@@ -29,16 +29,50 @@
 
   <!-- 홈 (첫 화면) -->
   <section id="screen-home" class="screen home-screen">
-    <div class="home-buttons">
-      <button class="home-btn home-btn-primary" id="btnHomeAddSite">
-        <span class="home-btn-icon">🏢</span>
-        <span class="home-btn-label">거래처 등록</span>
+    <div class="home-grid">
+      <button class="home-tile" id="btnHomeAddSite">
+        <span class="home-tile-icon">🏢</span>
+        <span class="home-tile-label">거래처 등록</span>
       </button>
-      <button class="home-btn home-btn-secondary" id="btnHomeViewSites">
-        <span class="home-btn-icon">📋</span>
-        <span class="home-btn-label">거래처 보기</span>
+      <button class="home-tile" id="btnHomeViewSites">
+        <span class="home-tile-icon">📋</span>
+        <span class="home-tile-label">거래처 보기</span>
+      </button>
+      <button class="home-tile" id="btnHomeConstructionTeam">
+        <span class="home-tile-icon">🔧</span>
+        <span class="home-tile-label">공사팀</span>
+      </button>
+      <button class="home-tile" id="btnHomeInspectionTeam">
+        <span class="home-tile-icon">🧯</span>
+        <span class="home-tile-label">점검팀</span>
       </button>
     </div>
+
+    <div class="home-todo-card">
+      <div class="home-todo-header">
+        <span class="home-todo-title">오늘의 주요 할일</span>
+        <span class="home-todo-date" id="homeTodoDate"></span>
+      </div>
+      <div id="homeTodoList"></div>
+    </div>
+  </section>
+
+  <!-- 공사팀 (준비중) -->
+  <section id="screen-construction-team" class="screen">
+    <div class="card">
+      <h2>🔧 공사팀</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionTeam">← 홈으로</button>
+  </section>
+
+  <!-- 점검팀 (준비중) -->
+  <section id="screen-inspection-team" class="screen">
+    <div class="card">
+      <h2>🧯 점검팀</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromInspectionTeam">← 홈으로</button>
   </section>
 
   <!-- 거래처 등록 방법 선택 -->
