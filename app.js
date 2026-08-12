@@ -1433,19 +1433,58 @@
     const fireStation = site ? (site.fireStation || guessFireStation(site.address)) : "";
     const fireStationLine = fireStation ? `${escapeHtml(fireStation)}장 귀하` : "○○ 소방본부장ㆍ소방서장 귀하";
 
-    const detailRowsHtml = resolved.map((def) => `
-      <tr>
-        <td class="did-content">
-          <strong>${escapeHtml([def.floor, def.location].filter(Boolean).join(" "))}</strong>
-          <div class="report-item-note">${escapeHtml(def.description)}</div>
-        </td>
-        <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
-        <td class="did-photo completion-photo-cell">${photoCellHtml(def, "after")}</td>
-      </tr>
-    `).join("");
+    // 지적내역서는 사진 있는 항목이 페이지를 길게 늘어뜨리므로, 한 페이지에 4건씩만 담고
+    // 나머지는 다음 페이지로 넘긴다 (화면 네비게이션과 인쇄/PDF 양쪽 다 이 단위로 쪽이 나뉜다).
+    const DETAIL_ITEMS_PER_PAGE = 4;
+    const detailChunks = [];
+    for (let i = 0; i < resolved.length; i += DETAIL_ITEMS_PER_PAGE) {
+      detailChunks.push(resolved.slice(i, i + DETAIL_ITEMS_PER_PAGE));
+    }
+    if (detailChunks.length === 0) detailChunks.push([]);
+
+    const detailPagesHtml = detailChunks.map((items, idx) => {
+      const rowsHtml = items.map((def) => `
+        <tr>
+          <td class="did-content">
+            <strong>${escapeHtml([def.floor, def.location].filter(Boolean).join(" "))}</strong>
+            <div class="report-item-note">${escapeHtml(def.description)}</div>
+          </td>
+          <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
+          <td class="did-photo completion-photo-cell">${photoCellHtml(def, "after")}</td>
+        </tr>
+      `).join("");
+      const pageLabel = detailChunks.length > 1 ? ` (${idx + 1}/${detailChunks.length}쪽)` : "";
+      return `
+        <div class="report-page">
+          <div class="official-form-title">지적내역서 (대상물: ${escapeHtml(siteName)})${pageLabel}</div>
+          <table class="completion-table">
+            <colgroup>
+              <col class="did-content">
+              <col class="did-photo">
+              <col class="did-photo">
+            </colgroup>
+            <thead>
+              <tr>
+                <th colspan="3">이행완료 보고서 증빙자료</th>
+              </tr>
+              <tr>
+                <th class="did-content did-result-label" rowspan="2">이행결과</th>
+                <th class="did-photo official-table-note" colspan="2">1. 이행 조치 건별 전ㆍ후 사진<br>2. 공사계약서 등 증빙서류 첨부(별첨)</th>
+              </tr>
+              <tr>
+                <th class="did-photo">이행 전</th>
+                <th class="did-photo">이행 후</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }).join("");
 
     $("#completionReportContent").innerHTML = `
       <div class="official-form">
+      <div class="report-page">
         <div class="official-form-topnote">■ 소방시설 설치 및 관리에 관한 법률 시행규칙 [별지 제11호서식]</div>
         <div class="official-form-title">소방시설등의 자체점검 결과 이행완료 보고서</div>
 
@@ -1521,36 +1560,32 @@
         </div>
 
         <div class="official-form-footer">210mm×297mm[백상지(80g/㎡) 또는 중질지(80g/㎡)]</div>
-
-        <div class="official-page-break">
-          <div class="official-form-title">지적내역서 (대상물: ${escapeHtml(siteName)})</div>
-          <table class="completion-table">
-            <colgroup>
-              <col class="did-content">
-              <col class="did-photo">
-              <col class="did-photo">
-            </colgroup>
-            <thead>
-              <tr>
-                <th colspan="3">이행완료 보고서 증빙자료</th>
-              </tr>
-              <tr>
-                <th class="did-content did-result-label" rowspan="2">이행결과</th>
-                <th class="did-photo official-table-note" colspan="2">1. 이행 조치 건별 전ㆍ후 사진<br>2. 공사계약서 등 증빙서류 첨부(별첨)</th>
-              </tr>
-              <tr>
-                <th class="did-photo">이행 전</th>
-                <th class="did-photo">이행 후</th>
-              </tr>
-            </thead>
-            <tbody>${detailRowsHtml}</tbody>
-          </table>
-        </div>
+      </div>
+      ${detailPagesHtml}
       </div>
     `;
     lastCompletionReportData = { site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation };
+    completionReportPages = Array.from($("#completionReportContent").querySelectorAll(".report-page"));
+    showCompletionReportPage(0);
     showScreen("screen-completion-report");
   }
+
+  let completionReportPages = [];
+  let completionReportPageIndex = 0;
+
+  function showCompletionReportPage(idx) {
+    if (!completionReportPages.length) return;
+    completionReportPageIndex = Math.max(0, Math.min(idx, completionReportPages.length - 1));
+    completionReportPages.forEach((el, i) => el.classList.toggle("active", i === completionReportPageIndex));
+    const total = completionReportPages.length;
+    $("#completionPageIndicator").textContent = `${completionReportPageIndex + 1} / ${total}`;
+    $("#btnCompletionPrevPage").disabled = completionReportPageIndex === 0;
+    $("#btnCompletionNextPage").disabled = completionReportPageIndex === total - 1;
+    $("#completionReportPager").classList.toggle("hidden", total <= 1);
+  }
+
+  $("#btnCompletionPrevPage").addEventListener("click", () => showCompletionReportPage(completionReportPageIndex - 1));
+  $("#btnCompletionNextPage").addEventListener("click", () => showCompletionReportPage(completionReportPageIndex + 1));
 
   $("#btnDownloadCompletionHwpx").addEventListener("click", async () => {
     if (!lastCompletionReportData) return;
@@ -1592,17 +1627,25 @@
 
   async function generateCompletionReportPdfBlob() {
     const el = $("#completionReportContent");
-    return await html2pdf()
-      .set({
-        margin: 8,
-        filename: "report.pdf",
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] }
-      })
-      .from(el)
-      .outputPdf("blob");
+    // 화면에서는 한 번에 한 페이지만 보이지만(.report-page.active), PDF에는 전체 페이지가
+    // 다 들어가야 하므로 캡처 직전에만 전부 보이게 전환한다 - html2canvas는 @media print를
+    // 반영하지 않으므로 인쇄용 CSS만으로는 부족하다.
+    el.classList.add("pdf-export-all-pages");
+    try {
+      return await html2pdf()
+        .set({
+          margin: 8,
+          filename: "report.pdf",
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"] }
+        })
+        .from(el)
+        .outputPdf("blob");
+    } finally {
+      el.classList.remove("pdf-export-all-pages");
+    }
   }
 
   // 파일 공유를 지원하는 브라우저(모바일 대부분)면 공유 시트를 띄우고, 아니면 파일을 바로 다운로드한다.

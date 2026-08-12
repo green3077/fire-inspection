@@ -571,7 +571,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .official-form-note-title { font-weight: 800; margin-bottom: 4px; color: var(--accent-dark); }
 .official-form-footer { text-align: right; font-size: 10px; color: var(--text-dim); margin-top: 14px; }
 .official-table-note { font-size: 11px; font-weight: 400; color: var(--text-dim); text-align: left !important; }
-.official-page-break { margin-top: 40px; padding-top: 28px; border-top: 2px dashed var(--border); }
+
+/* 보고서 페이지 넘기기 - 화면에서는 한 번에 한 쪽만 보이고, 인쇄/PDF에서는 전체 쪽이
+   실제 인쇄 페이지 단위로 나뉘어 전부 출력된다. */
+.report-page { display: none; }
+.report-page.active { display: block; }
+.pdf-export-all-pages .report-page { display: block; }
+.pdf-export-all-pages .report-page:not(:first-child) { page-break-before: always; break-before: page; }
+.report-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 14px 0; }
+.report-pager .btn { width: auto; padding: 10px 20px; margin-top: 0; }
+.report-pager span { font-size: 16px; font-weight: 800; color: var(--accent-dark); min-width: 60px; text-align: center; }
+.report-pager.hidden { display: none; }
 
 @media print {
   .no-print, .tab-bar, .app-header { display: none !important; }
@@ -591,5 +601,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .official-table td { border-color: #999; color: #000; }
   .official-table .section-label, .official-table .field-label { background: #eee; color: #000; }
   .official-form-topnote, .official-form-footer, .official-form-note, .official-table-note { color: #333; }
-  .official-page-break { page-break-before: always; break-before: page; margin-top: 0; padding-top: 0; border-top: none; }
+  .report-page { display: block !important; page-break-after: always; break-after: page; }
+  .report-page:last-child { page-break-after: auto; break-after: auto; }
 }
