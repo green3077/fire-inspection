@@ -247,7 +247,7 @@
       }
       if (!result) result = await ClientImport.parseClientFile(file);
       if (result.unsupported) {
-        toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp${ClaudeFill.isConfigured() ? ", .hwpx" : ""}, 사진).`, "error");
+        toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp, .hwpx, 사진).`, "error");
         return;
       }
       openBlankSiteForm();
@@ -1356,7 +1356,7 @@
     const apiKeys = BldReg.getKeys();
     $("#jusoApiKey").value = apiKeys.jusoKey || "";
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
-    $("#claudeApiKey").value = ClaudeFill.getApiKey();
+    $("#claudeApiKey").value = ClaudeFill.getPassword();
   }
 
   $("#btnSaveApiKeys").addEventListener("click", () => {
@@ -1368,13 +1368,9 @@
   });
 
   $("#btnSaveClaudeKey").addEventListener("click", () => {
-    const key = $("#claudeApiKey").value.trim();
-    if (key && /[^\x00-\x7F]/.test(key)) {
-      toast("API 키에 한글이나 다른 문자가 섞여 있는 것 같습니다. 안내 문구 없이 키 값만 정확히 복사해서 다시 붙여넣어 주세요 (보통 sk-ant-로 시작합니다).", "error");
-      return;
-    }
-    ClaudeFill.saveApiKey(key);
-    toast(ClaudeFill.isConfigured() ? "Claude API 키가 저장되었습니다. 이제 파일 업로드 시 AI가 자동으로 분석합니다." : "Claude API 키가 삭제되었습니다.");
+    const password = $("#claudeApiKey").value.trim();
+    ClaudeFill.savePassword(password);
+    toast(ClaudeFill.isConfigured() ? "저장되었습니다. 이제 파일 업로드 시 AI가 자동으로 분석합니다." : "비밀번호가 삭제되었습니다.");
   });
 
   async function renderRouteList() {

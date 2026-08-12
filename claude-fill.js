@@ -1,22 +1,22 @@
 // 업로드 파일(PDF/엑셀/워드/한글/HWPX/사진)을 Claude AI로 분석해 폼 입력칸에 자동으로 채워주는 모듈.
-// 사용자 본인의 Anthropic API 키가 설정 탭에 저장되어 있을 때만 동작 (브라우저 로컬 저장, 서버 전송 없음).
-// 키가 없거나 API 호출이 실패하면 호출부(app.js)가 기존 정규식 기반 파서로 자동 폴백한다.
+// 실제 Anthropic 호환 게이트웨이 키는 브라우저에 두지 않고 서버(Cloudflare Worker 프록시)에만 보관한다 - 앱 공용
+// 비밀번호(설정 탭에서 입력, 로컬 저장)만 프록시로 보내 인증하면 개인 API 키 없이도 AI 분석을 쓸 수 있다.
+// 비밀번호가 없거나 호출이 실패하면 호출부(app.js)가 기존 정규식 기반 파서로 자동 폴백한다.
 const ClaudeFill = (() => {
-  const KEY_STORAGE = "fireInspectionClaudeApiKey";
+  const PASSWORD_STORAGE = "fireInspectionAiPassword";
   const MODEL = "claude-opus-5";
-  // 영남이공대학교 API Gateway(mindlogic) - Anthropic 네이티브 Messages API 호환 엔드포인트.
-  // Anthropic SDK의 base_url을 이 주소로 바꾸는 것과 동일 (SDK가 내부적으로 붙이는 /v1/messages 경로 포함).
-  const API_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/claude/v1/messages";
+  // Cloudflare Worker로 배포한 프록시 - 실제 게이트웨이 키(factchat-cloud.mindlogic.ai)는 여기(서버 환경변수)에만 있다.
+  const PROXY_URL = "https://fire-inspection-claude-proxy.cigar-log-gemini-proxy.workers.dev/";
   const IMAGE_MEDIA_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", bmp: "image/bmp", gif: "image/gif" };
 
-  function getApiKey() {
-    return (localStorage.getItem(KEY_STORAGE) || "").trim();
+  function getPassword() {
+    return (localStorage.getItem(PASSWORD_STORAGE) || "").trim();
   }
-  function saveApiKey(key) {
-    localStorage.setItem(KEY_STORAGE, (key || "").trim());
+  function savePassword(pw) {
+    localStorage.setItem(PASSWORD_STORAGE, (pw || "").trim());
   }
   function isConfigured() {
-    return !!getApiKey();
+    return !!getPassword();
   }
 
   async function fileToBase64(file) {
@@ -97,16 +97,13 @@ const ClaudeFill = (() => {
   }
 
   async function callClaude({ system, content, schema, maxTokens }) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("claude_no_api_key");
-    const res = await fetch(API_URL, {
+    const password = getPassword();
+    if (!password) throw new Error("claude_no_password");
+    const res = await fetch(PROXY_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": apiKey,
-        "authorization": "Bearer " + apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "x-app-secret": password
       },
       body: JSON.stringify({
         model: MODEL,
@@ -211,5 +208,5 @@ const ClaudeFill = (() => {
     return "파일";
   }
 
-  return { getApiKey, saveApiKey, isConfigured, isSupportedExt, analyzeClientFile, analyzeDeficiencyFile, hwpxToText };
+  return { getPassword, savePassword, isConfigured, isSupportedExt, analyzeClientFile, analyzeDeficiencyFile, hwpxToText };
 })();

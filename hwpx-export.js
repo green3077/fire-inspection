@@ -1,20 +1,12 @@
 // 이행완료보고서 HWPX(신 한글) 파일 생성 - 실제 별지 제11호서식 샘플 파일(templates/completion-report-template.hwpx)을
 // 템플릿으로 불러와 DOM으로 파싱한 뒤, 라벨 셀 옆의 값 칸을 찾아 채우고 지적내역서 표는 실제 항목 수만큼 행을 복제한다.
-// 사진은 hp:pic(그림) 개체로 BinData에 임베드한다 - 이 프로젝트에 실제 사진이 포함된 hwpx 예제가 없어 한글 프로그램으로
-// 직접 열어 검증하지 못했으므로, 문제가 있으면 PDF/인쇄 경로를 대신 사용할 것.
+// 사진은 임베드하지 않고 안내 문구만 남긴다(사진은 "인쇄/PDF 저장" 경로에서 확인) - 이유는 setCellPhoto 주석 참고.
 const HwpxExport = (() => {
   const HP = "http://www.hancom.co.kr/hwpml/2011/paragraph";
-  const HC = "http://www.hancom.co.kr/hwpml/2011/core";
-  const OPF = "http://www.idpf.org/2007/opf/";
   const TEMPLATE_URL = "templates/completion-report-template.hwpx";
 
   function el(doc, name, attrs) {
     const e = doc.createElementNS(HP, name);
-    for (const k in attrs) e.setAttribute(k, attrs[k]);
-    return e;
-  }
-  function hcEl(doc, name, attrs) {
-    const e = doc.createElementNS(HC, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
     return e;
   }
@@ -167,97 +159,25 @@ const HwpxExport = (() => {
     });
   }
 
-  function buildPicElement(doc, binaryId, hwpWidth, hwpHeight) {
-    const pic = el(doc, "hp:pic", {
-      id: String(1000000000 + Math.floor(Math.random() * 900000000)),
-      zOrder: "0",
-      numberingType: "PICTURE",
-      textWrap: "SQUARE",
-      textFlow: "BOTH_SIDES",
-      lock: "0",
-      dropcapstyle: "None",
-      href: "",
-      groupLevel: "0"
-    });
-    pic.appendChild(el(doc, "hp:offset", { x: "0", y: "0" }));
-    pic.appendChild(el(doc, "hp:orgSz", { width: String(hwpWidth), height: String(hwpHeight) }));
-    pic.appendChild(el(doc, "hp:curSz", { width: String(hwpWidth), height: String(hwpHeight) }));
-    pic.appendChild(el(doc, "hp:flip", { horizontal: "0", vertical: "0" }));
-    pic.appendChild(
-      el(doc, "hp:rotationInfo", { angle: "0", centerX: String(Math.round(hwpWidth / 2)), centerY: String(Math.round(hwpHeight / 2)), rotateimage: "1" })
-    );
-    const ri = el(doc, "hp:renderingInfo", {});
-    ri.appendChild(hcEl(doc, "hc:transMatrix", { e1: "1", e2: "0", e3: "0", e4: "0", e5: "1", e6: "0" }));
-    ri.appendChild(hcEl(doc, "hc:scaMatrix", { e1: "1", e2: "0", e3: "0", e4: "0", e5: "1", e6: "0" }));
-    ri.appendChild(hcEl(doc, "hc:rotMatrix", { e1: "1", e2: "0", e3: "0", e4: "0", e5: "1", e6: "0" }));
-    pic.appendChild(ri);
-    const imgRect = el(doc, "hp:imgRect", {});
-    imgRect.appendChild(hcEl(doc, "hc:pt0", { x: "0", y: "0" }));
-    imgRect.appendChild(hcEl(doc, "hc:pt1", { x: String(hwpWidth), y: "0" }));
-    imgRect.appendChild(hcEl(doc, "hc:pt2", { x: String(hwpWidth), y: String(hwpHeight) }));
-    imgRect.appendChild(hcEl(doc, "hc:pt3", { x: "0", y: String(hwpHeight) }));
-    pic.appendChild(imgRect);
-    pic.appendChild(el(doc, "hp:imgClip", { left: "0", right: String(hwpWidth), top: "0", bottom: String(hwpHeight) }));
-    pic.appendChild(el(doc, "hp:inMargin", { left: "0", right: "0", top: "0", bottom: "0" }));
-    pic.appendChild(el(doc, "hp:imgDim", { dimwidth: String(hwpWidth), dimheight: String(hwpHeight) }));
-    pic.appendChild(el(doc, "hp:img", { bright: "0", contrast: "0", effect: "REAL_PIC", alpha: "0", binaryItemIDRef: binaryId }));
-    return pic;
-  }
-
-  async function getImagePixelSize(blob) {
-    const bitmap = await createImageBitmap(blob);
-    const size = { width: bitmap.width, height: bitmap.height };
-    bitmap.close();
-    return size;
-  }
-
-  // 셀 안의 "사진" 안내 문단을 지우고 그림 개체를 넣은 새 문단으로 교체. 이미지가 없으면 "사진 없음" 텍스트만 남김.
-  async function setCellPhoto(tc, blob, cellWidthHwp, cellHeightHwp, imageState) {
-    const doc = tc.ownerDocument;
+  // 사진 칸에 그림을 직접 임베드(hp:pic)하는 방식은 실제 한글 프로그램이 만든 예제 없이 OWPML 스펙만
+  // 보고 재구성했는데, 실제 한글에서 열어보니 파일 자체가 손상되어 열리지 않는 문제가 있었다(2026-08-12 확인).
+  // 사진을 억지로 끼워 넣어 파일 전체를 못 여는 것보다는 사진 없이라도 열리는 파일이 훨씬 안전하므로,
+  // HWPX에는 사진을 넣지 않고 안내 문구만 남긴다 - 사진은 "인쇄/PDF 저장" 보고서에서 정상적으로 보인다.
+  function setCellPhoto(tc, hasPhoto) {
     const subList = tc.getElementsByTagNameNS(HP, "subList")[0];
     const paras = Array.from(subList.getElementsByTagNameNS(HP, "p"));
     const templatePara = paras[0];
     paras.forEach((p) => p.remove());
-
-    if (!blob) {
-      const p = templatePara.cloneNode(true);
-      setParagraphText(p, "사진 없음", "47");
-      subList.appendChild(p);
-      return;
-    }
-
-    const { width, height } = await getImagePixelSize(blob);
-    const maxW = cellWidthHwp - 200;
-    const maxH = cellHeightHwp - 200;
-    const scale = Math.min(maxW / width, maxH / height);
-    const hwpWidth = Math.max(1000, Math.round(width * scale));
-    const hwpHeight = Math.max(1000, Math.round(height * scale));
-
-    const ext = blob.type === "image/png" ? "png" : "jpg";
-    const mediaType = blob.type === "image/png" ? "image/png" : "image/jpeg";
-    const imageIndex = ++imageState.count;
-    const binaryId = `image${imageIndex}`;
-    const buf = await blob.arrayBuffer();
-    imageState.zip.file(`BinData/${binaryId}.${ext}`, buf);
-    imageState.manifestItems.push({ id: binaryId, href: `BinData/${binaryId}.${ext}`, mediaType });
-
     const p = templatePara.cloneNode(true);
-    Array.from(p.getElementsByTagNameNS(HP, "run")).forEach((r) => r.remove());
-    Array.from(p.getElementsByTagNameNS(HP, "linesegarray")).forEach((r) => r.remove());
-    const run = el(doc, "hp:run", { charPrIDRef: "47" });
-    run.appendChild(buildPicElement(doc, binaryId, hwpWidth, hwpHeight));
-    p.appendChild(run);
+    setParagraphText(p, hasPhoto ? "사진은 '인쇄/PDF 저장' 보고서를 참고하세요 (HWPX는 사진 미포함)" : "사진 없음", "47");
     subList.appendChild(p);
   }
 
-  async function fillDeficiencyTable(doc, tbl, items, photoMap, imageState) {
+  function fillDeficiencyTable(doc, tbl, items, photoMap) {
     const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
     // tr[0]=제목, tr[1]=이행결과/안내문구, tr[2]=이행전/이행후 라벨, tr[3..]=예시 데이터 4행
     const templateRow = trs[3].cloneNode(true);
     for (let i = 3; i < trs.length; i++) trs[i].remove();
-
-    const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준)
-    const rowHeightHwp = 15293;
 
     for (let i = 0; i < items.length; i++) {
       const def = items[i];
@@ -277,27 +197,16 @@ const HwpxExport = (() => {
 
       const beforeId = (def.beforePhotoIds || [])[0];
       const afterId = (def.afterPhotoIds || [])[0];
-      await setCellPhoto(beforeTc, beforeId ? photoMap.get(beforeId) : null, rowWidthHwp, rowHeightHwp, imageState);
-      await setCellPhoto(afterTc, afterId ? photoMap.get(afterId) : null, rowWidthHwp, rowHeightHwp, imageState);
+      setCellPhoto(beforeTc, !!(beforeId && photoMap.get(beforeId)));
+      setCellPhoto(afterTc, !!(afterId && photoMap.get(afterId)));
 
       tbl.appendChild(row);
     }
     tbl.setAttribute("rowCnt", String(3 + items.length));
   }
 
-  function addManifestItems(hpfDoc, items) {
-    const manifest = hpfDoc.getElementsByTagNameNS(OPF, "manifest")[0];
-    for (const item of items) {
-      const el2 = hpfDoc.createElementNS(OPF, "opf:item");
-      el2.setAttribute("id", item.id);
-      el2.setAttribute("href", item.href);
-      el2.setAttribute("media-type", item.mediaType);
-      manifest.appendChild(el2);
-    }
-  }
-
   // resolved: 완료된 지적사항 배열 (def.beforePhotoIds/afterPhotoIds/floor/location/code/description)
-  // photoMap: Map(photoId -> Blob)
+  // photoMap: Map(photoId -> 사진 레코드) - 사진 존재 여부만 확인하고 실제 임베드는 하지 않는다(위 setCellPhoto 참고).
   async function generateCompletionReportHwpx({ site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr }) {
     const res = await fetch(TEMPLATE_URL);
     if (!res.ok) throw new Error("template_fetch_failed_" + res.status);
@@ -305,11 +214,9 @@ const HwpxExport = (() => {
     const zip = await JSZip.loadAsync(buf);
 
     const sectionXmlText = await zip.file("Contents/section0.xml").async("text");
-    const hpfXmlText = await zip.file("Contents/content.hpf").async("text");
 
     const parser = new DOMParser();
     const sectionDoc = parser.parseFromString(sectionXmlText, "application/xml");
-    const hpfDoc = parser.parseFromString(hpfXmlText, "application/xml");
 
     if (sectionDoc.getElementsByTagName("parsererror").length > 0) {
       throw new Error("hwpx_template_parse_error");
@@ -319,17 +226,11 @@ const HwpxExport = (() => {
 
     const tbls = Array.from(sectionDoc.getElementsByTagNameNS(HP, "tbl"));
     const deficiencyTbl = tbls[tbls.length - 1];
-    const imageState = { zip, count: 0, manifestItems: [] };
-    await fillDeficiencyTable(sectionDoc, deficiencyTbl, resolved, photoMap, imageState);
-
-    if (imageState.manifestItems.length > 0) {
-      addManifestItems(hpfDoc, imageState.manifestItems);
-    }
+    fillDeficiencyTable(sectionDoc, deficiencyTbl, resolved, photoMap);
 
     const serializer = new XMLSerializer();
     const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>';
     zip.file("Contents/section0.xml", XML_DECL + serializer.serializeToString(sectionDoc.documentElement));
-    zip.file("Contents/content.hpf", XML_DECL + serializer.serializeToString(hpfDoc.documentElement));
 
     return zip.generateAsync({ type: "blob", mimeType: "application/hwp+zip" });
   }

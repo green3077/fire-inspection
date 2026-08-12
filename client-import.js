@@ -137,6 +137,18 @@ const ClientImport = (() => {
         if (result[field]) continue;
         const labelNorm = normTight(label);
         if (!norm.includes(labelNorm)) continue;
+
+        // 라벨과 값이 같은 칸에 공백 없이 붙어있는 경우(HWPX 표에서 흔함, 예: "명칭(상호)미소빌딩") 우선 시도.
+        const rawIdx = flat[i].text.indexOf(label);
+        if (rawIdx !== -1) {
+          const sameCellValue = cleanValue(flat[i].text.slice(rawIdx + label.length));
+          if (sameCellValue && !isSkippableCell(sameCellValue) && !looksLikeAnotherLabel(sameCellValue)) {
+            let value = sameCellValue;
+            if (NAME_FIELDS.includes(field)) value = extractPersonName(value) || "";
+            if (value) { result[field] = value; continue; }
+          }
+        }
+
         const anchorIdx = findValueCellAfter(flat, i);
         if (anchorIdx === -1) continue;
         let value = flat[anchorIdx].text.trim();
@@ -311,7 +323,9 @@ const ClientImport = (() => {
         const text = (cell == null ? "" : String(cell));
         const cat = BUILDING_TYPE_CATEGORIES.find((c) => text.includes(c));
         if (cat) {
-          const value = text.replace(/^[,\s]+/, "").replace(/\($/, "").trim();
+          // 셀 안에 "대상물 구분(용도)근린생활시설..." 처럼 라벨이 값 앞에 붙어있는 경우(HWPX 표)를 대비해
+          // 카테고리 키워드가 시작하는 지점부터 값으로 채택한다 (라벨 없이 값만 있는 셀은 index 0이라 그대로 동작).
+          const value = text.slice(text.indexOf(cat)).replace(/^[,\s]+/, "").replace(/\($/, "").trim();
           if (value) { result.buildingType = value.slice(0, 40); return; }
         }
       }
@@ -420,6 +434,37 @@ const ClientImport = (() => {
     }
   }
 
+  async function hwpxToTextAndRows(file) {
+    // HWPX(신 한글, zip+XML) - Contents/section*.xml을 파싱. 표(hp:tbl/tr/tc)는 PDF/워드와 같은 행렬로 추출해
+    // extractFields의 표 우선 셀-시퀀스 lookahead 로직을 그대로 재사용하고, 표 밖 문단은 줄 단위 텍스트로 뽑는다.
+    // 구 HWP(PrvText 미리보기, 문서 앞부분만 가능)와 달리 문서 전체를 그대로 읽을 수 있어 훨씬 정확하다.
+    const HP_NS = "http://www.hancom.co.kr/hwpml/2011/paragraph";
+    const zip = await JSZip.loadAsync(file);
+    const sectionNames = Object.keys(zip.files).filter((n) => /^Contents\/section\d+\.xml$/.test(n)).sort();
+    const lines = [];
+    const rows = [];
+    for (const name of sectionNames) {
+      const xml = await zip.file(name).async("text");
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      const tblParas = new Set();
+      Array.from(doc.getElementsByTagNameNS(HP_NS, "tbl")).forEach((tbl) => {
+        Array.from(tbl.getElementsByTagNameNS(HP_NS, "tr")).forEach((tr) => {
+          const row = Array.from(tr.getElementsByTagNameNS(HP_NS, "tc")).map((tc) => {
+            Array.from(tc.getElementsByTagNameNS(HP_NS, "p")).forEach((p) => tblParas.add(p));
+            return Array.from(tc.getElementsByTagNameNS(HP_NS, "t")).map((t) => t.textContent).join("");
+          });
+          rows.push(row);
+        });
+      });
+      Array.from(doc.getElementsByTagNameNS(HP_NS, "p")).forEach((p) => {
+        if (tblParas.has(p)) return;
+        const line = Array.from(p.getElementsByTagNameNS(HP_NS, "t")).map((t) => t.textContent).join("");
+        if (line.trim()) lines.push(line);
+      });
+    }
+    return { text: lines.join("\n"), rows };
+  }
+
   let tesseractLoadPromise = null;
   function loadTesseract() {
     if (window.Tesseract) return Promise.resolve();
@@ -459,6 +504,10 @@ const ClientImport = (() => {
       const r = await pdfToRows(file);
       rows = r.rows;
       lowConfidence = r.lowConfidence;
+    } else if (ext === "hwpx") {
+      typeLabel = "한글(HWPX)";
+      const r = await hwpxToTextAndRows(file);
+      text = r.text; rows = r.rows;
     } else if (ext === "hwp") {
       typeLabel = "한글(HWP)";
       lowConfidence = true;
