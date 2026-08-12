@@ -322,6 +322,13 @@
       <div class="field"><span>공공데이터포털 건축물대장 인증키 (data.go.kr)</span><input type="text" id="dataGoKrApiKey" placeholder="건축물대장정보 서비스 활용신청 후 발급"></div>
       <button class="btn btn-secondary" id="btnSaveApiKeys">API 키 저장</button>
     </div>
+    <div class="card">
+      <h2>☁️ 구글 드라이브 자동 저장</h2>
+      <div class="hint-text">연결하면 이후 업로드하는 자료(거래처 등록 파일, 지적사항 자료, 사진, 첨부파일)와 생성되는 이행완료보고서가 내 구글 드라이브의 "조은소방_자동저장" 폴더에 현장별로 자동 저장됩니다.</div>
+      <div id="driveStatus" class="hint-text">연결 상태 확인 중...</div>
+      <button class="btn btn-secondary" id="btnDriveConnect">구글 드라이브 연결</button>
+      <button class="btn btn-secondary hidden" id="btnDriveDisconnect">연결 해제</button>
+    </div>
   </section>
 
 </div>
@@ -348,6 +355,7 @@
 <script src="bldreg.js"></script>
 <script src="claude-fill.js"></script>
 <script src="hwpx-export.js"></script>
+<script src="drive.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

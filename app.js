@@ -12,6 +12,15 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+  // 업로드/생성되는 파일을 구글 드라이브에 백업 - 연결 안 돼 있으면 아무 일도 하지 않고,
+  // 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
+  function backupToDrive(siteId, category, filename, blob) {
+    if (!blob || !DriveBackup.isConnected()) return;
+    (siteId ? FireDB.getSite(siteId) : Promise.resolve(null))
+      .then((site) => DriveBackup.uploadToSite(site ? site.name : null, category, filename, blob))
+      .catch(() => {});
+  }
+
   function todayISO() {
     const d = new Date();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -517,6 +526,7 @@
           blob: file,
           createdAt: new Date().toISOString()
         });
+        backupToDrive(editingSiteId, "첨부파일", file.name, file);
       }
     } else {
       for (const file of files) {
@@ -548,6 +558,10 @@
         }
       }
       if (!result) result = await ClientImport.parseClientFile(file);
+      if (DriveBackup.isConnected()) {
+        const guessName = (result.fields && result.fields.name) || file.name.replace(/\.[^.]+$/, "");
+        DriveBackup.uploadToSite(guessName, "거래처_등록자료", file.name, file).catch(() => {});
+      }
       if (result.unsupported) {
         toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp, .hwpx, 사진).`, "error");
         return;
@@ -631,6 +645,7 @@
           blob: att.blob,
           createdAt: new Date().toISOString()
         });
+        DriveBackup.uploadToSite(site.name, "첨부파일", att.filename, att.blob).catch(() => {});
       }
       pendingAttachments = [];
       renderSites();
@@ -963,6 +978,7 @@
     item.photoIds.push(photo.id);
     await persistCurrentInspection();
     await renderChecklistBody();
+    backupToDrive(currentInspection.siteId, "체크리스트_사진", `${item.name || item.id}_${photo.id}.jpg`, file);
   }
 
   async function removeItemPhoto(itemId, photoId) {
@@ -1266,6 +1282,7 @@
         createdAt: new Date().toISOString()
       });
       targetArr.push(photo.id);
+      backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file);
     }
     await FireDB.updateDeficiency(def.id, { beforePhotoIds: def.beforePhotoIds, afterPhotoIds: def.afterPhotoIds });
     await renderDeficiencies();
@@ -1322,6 +1339,7 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
+    backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
     const ext = file.name.split(".").pop().toLowerCase();
     if (ClaudeFill.isConfigured()) toast("Claude AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요...");
     try {
@@ -1542,6 +1560,12 @@
     btn.textContent = "생성 중...";
     try {
       const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
+      backupToDrive(
+        lastCompletionReportData.site ? lastCompletionReportData.site.id : null,
+        "이행완료보고서",
+        `이행완료보고서_${lastCompletionReportData.siteName}_${todayISO()}.hwpx`,
+        blob
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1614,11 +1638,14 @@
     btn.textContent = "생성 중...";
     try {
       const filenameBase = `이행완료보고서_${lastCompletionReportData.siteName}`;
+      const siteId = lastCompletionReportData.site ? lastCompletionReportData.site.id : null;
       if (format === "hwpx") {
         const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
+        backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.hwpx`, blob);
         await shareOrDownloadFile(blob, `${filenameBase}.hwpx`, "application/hwp+zip");
       } else {
         const blob = await generateCompletionReportPdfBlob();
+        backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.pdf`, blob);
         await shareOrDownloadFile(blob, `${filenameBase}.pdf`, "application/pdf");
       }
     } catch (err) {
@@ -1723,7 +1750,33 @@
     $("#jusoApiKey").value = apiKeys.jusoKey || "";
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
     $("#claudeApiKey").value = ClaudeFill.getPassword();
+    renderDriveStatus();
   }
+
+  function renderDriveStatus() {
+    const connected = DriveBackup.isConnected();
+    $("#driveStatus").textContent = connected
+      ? `연결됨${DriveBackup.getEmail() ? " (" + DriveBackup.getEmail() + ")" : ""} - 자동 저장 중`
+      : "연결 안 됨 - 파일이 자동 저장되지 않습니다.";
+    $("#btnDriveConnect").classList.toggle("hidden", connected);
+    $("#btnDriveDisconnect").classList.toggle("hidden", !connected);
+  }
+
+  $("#btnDriveConnect").addEventListener("click", async () => {
+    try {
+      await DriveBackup.signIn();
+      renderDriveStatus();
+      toast("구글 드라이브에 연결되었습니다.");
+    } catch (err) {
+      toast("구글 드라이브 연결에 실패했습니다: " + err.message, "error");
+    }
+  });
+
+  $("#btnDriveDisconnect").addEventListener("click", () => {
+    DriveBackup.signOut();
+    renderDriveStatus();
+    toast("구글 드라이브 연결이 해제되었습니다.");
+  });
 
   $("#btnSaveApiKeys").addEventListener("click", () => {
     BldReg.saveKeys({
@@ -1825,4 +1878,16 @@
   renderSites();
   showScreen("screen-home");
   renderHomeTodo();
+
+  // 구글 드라이브 조용한 재로그인 - GIS 팝업은 페이지 로드 직후엔 브라우저가 막으므로,
+  // 사용자의 첫 클릭/키입력 시점까지 기다렸다가 한 번만 시도한다.
+  function trySilentDriveSignInOnce() {
+    document.removeEventListener("pointerdown", trySilentDriveSignInOnce);
+    document.removeEventListener("keydown", trySilentDriveSignInOnce);
+    DriveBackup.trySilentSignIn().then(() => {
+      if (document.getElementById("screen-settings").classList.contains("active")) renderDriveStatus();
+    });
+  }
+  document.addEventListener("pointerdown", trySilentDriveSignInOnce, { once: true });
+  document.addEventListener("keydown", trySilentDriveSignInOnce, { once: true });
 })();
