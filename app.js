@@ -2,6 +2,7 @@
 (() => {
   let editingSiteId = null;
   let currentSiteId = null;      // 현장 상세 화면에서 보고 있는 현장
+  let currentConstructionSiteId = null;  // 공사팀에서 보고 있는 업체(=현장)
   let currentInspection = null;  // 체크리스트/보고서/지적사항 화면에서 다루는 점검(메모리 상 사본)
   let activeObjectUrls = [];
   let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
@@ -130,6 +131,9 @@
   // 매핑에 없는 화면(홈, 거래처보기/일정관리/설정/지적사항 허브 같은 최상위 탭 화면)은 홈으로 이동한다.
   const BACK_DELEGATE = {
     "screen-construction-team": "btnBackFromConstructionTeam",
+    "screen-construction-company": "btnBackFromConstructionCompany",
+    "screen-construction-estimates": "btnBackFromConstructionEstimates",
+    "screen-construction-history": "btnBackFromConstructionHistory",
     "screen-inspection-team": "btnBackFromInspectionTeam",
     "screen-site-entry-choice": "btnCancelEntryChoice",
     "screen-site-form": "btnCancelSiteForm",
@@ -196,11 +200,56 @@
   });
   $("#btnHomeAddSite").addEventListener("click", () => $("#btnAddSite").click());
   $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
-  $("#btnHomeConstructionTeam").addEventListener("click", () => showScreen("screen-construction-team"));
+  $("#btnHomeConstructionTeam").addEventListener("click", () => { renderConstructionTeam(); showScreen("screen-construction-team"); });
   $("#btnHomeInspectionTeam").addEventListener("click", () => showScreen("screen-inspection-team"));
   $("#btnHomeDeficiencies").addEventListener("click", () => { renderDeficiencyHub(); showScreen("screen-deficiency-hub"); });
   $("#btnBackFromConstructionTeam").addEventListener("click", goHome);
   $("#btnBackFromInspectionTeam").addEventListener("click", goHome);
+
+  // ---------- 공사팀 (업체 = 거래처 재사용, 견적서/공사내역은 업체별 하위 메뉴) ----------
+  async function renderConstructionTeam() {
+    const sites = await FireDB.getAllSites();
+    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const list = $("#constructionTeamList");
+    if (sites.length === 0) {
+      list.innerHTML = `<div class="empty-state">등록된 업체가 없습니다.</div>`;
+      return;
+    }
+    list.innerHTML = sites.map((s) => `
+      <div class="list-card" data-id="${s.id}">
+        <div class="list-card-title">${escapeHtml(s.name)}</div>
+        <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}</div>
+      </div>
+    `).join("");
+    Array.from(list.querySelectorAll(".list-card")).forEach((el) => {
+      el.addEventListener("click", () => openConstructionCompany(el.dataset.id));
+    });
+  }
+
+  async function openConstructionCompany(id) {
+    currentConstructionSiteId = id;
+    const site = await FireDB.getSite(id);
+    if (!site) { renderConstructionTeam(); showScreen("screen-construction-team"); return; }
+    $("#constructionCompanyName").textContent = site.name;
+    $("#constructionCompanyAddress").textContent = site.address || "";
+    showScreen("screen-construction-company");
+  }
+
+  $("#btnBackFromConstructionCompany").addEventListener("click", () => { renderConstructionTeam(); showScreen("screen-construction-team"); });
+
+  $("#btnConstructionEstimates").addEventListener("click", async () => {
+    const site = await FireDB.getSite(currentConstructionSiteId);
+    $("#constructionEstimatesCompanyName").textContent = site ? site.name : "";
+    showScreen("screen-construction-estimates");
+  });
+  $("#btnBackFromConstructionEstimates").addEventListener("click", () => showScreen("screen-construction-company"));
+
+  $("#btnConstructionHistory").addEventListener("click", async () => {
+    const site = await FireDB.getSite(currentConstructionSiteId);
+    $("#constructionHistoryCompanyName").textContent = site ? site.name : "";
+    showScreen("screen-construction-history");
+  });
+  $("#btnBackFromConstructionHistory").addEventListener("click", () => showScreen("screen-construction-company"));
 
   // ---------- 탭 ----------
   $$(".tab-btn").forEach((btn) => {

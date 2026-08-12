@@ -73,13 +73,43 @@
     </div>
   </section>
 
-  <!-- 공사팀 (준비중) -->
+  <!-- 공사팀: 업체 목록 -->
   <section id="screen-construction-team" class="screen">
     <div class="card">
       <h2>🔧 공사팀</h2>
+      <div class="hint-text">업체를 선택하면 견적서와 공사내역을 관리할 수 있습니다.</div>
+    </div>
+    <div id="constructionTeamList"></div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionTeam">← 홈으로</button>
+  </section>
+
+  <!-- 공사팀: 업체 상세 메뉴 -->
+  <section id="screen-construction-company" class="screen">
+    <div class="card">
+      <h2 id="constructionCompanyName"></h2>
+      <div class="hint-text" id="constructionCompanyAddress"></div>
+    </div>
+    <button class="btn btn-primary btn-large" id="btnConstructionEstimates">📄 견적서</button>
+    <button class="btn btn-primary btn-large" id="btnConstructionHistory">🛠️ 공사내역</button>
+    <button class="btn btn-secondary" id="btnBackFromConstructionCompany">← 업체 목록으로</button>
+  </section>
+
+  <!-- 공사팀: 견적서 (준비중) -->
+  <section id="screen-construction-estimates" class="screen">
+    <div class="card">
+      <h2>📄 <span id="constructionEstimatesCompanyName"></span> · 견적서</h2>
       <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
     </div>
-    <button class="btn btn-secondary" id="btnBackFromConstructionTeam">← 홈으로</button>
+    <button class="btn btn-secondary" id="btnBackFromConstructionEstimates">← 뒤로</button>
+  </section>
+
+  <!-- 공사팀: 공사내역 (준비중) -->
+  <section id="screen-construction-history" class="screen">
+    <div class="card">
+      <h2>🛠️ <span id="constructionHistoryCompanyName"></span> · 공사내역</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionHistory">← 뒤로</button>
   </section>
 
   <!-- 점검팀 (준비중) -->
