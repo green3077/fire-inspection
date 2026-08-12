@@ -1,5 +1,5 @@
 test-samples/
-_debug_output.hwpx
+_debug_output*.hwpx
 __pycache__/
 *.pyc
 .DS_Store
