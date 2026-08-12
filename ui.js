@@ -32,3 +32,27 @@ function confirmDialog(message) {
     cancelBtn.addEventListener("click", onCancel);
   });
 }
+
+// "pdf" | "hwpx" | null(취소) 반환
+function pickShareFormat() {
+  const modal = document.getElementById("shareFormatModal");
+  const pdfBtn = document.getElementById("shareFormatPdfBtn");
+  const hwpxBtn = document.getElementById("shareFormatHwpxBtn");
+  const cancelBtn = document.getElementById("shareFormatCancelBtn");
+  modal.classList.remove("hidden");
+  return new Promise((resolve) => {
+    function cleanup(result) {
+      modal.classList.add("hidden");
+      pdfBtn.removeEventListener("click", onPdf);
+      hwpxBtn.removeEventListener("click", onHwpx);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onPdf() { cleanup("pdf"); }
+    function onHwpx() { cleanup("hwpx"); }
+    function onCancel() { cleanup(null); }
+    pdfBtn.addEventListener("click", onPdf);
+    hwpxBtn.addEventListener("click", onHwpx);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}

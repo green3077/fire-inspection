@@ -85,6 +85,40 @@
     return "지역 미상";
   }
 
+  // 이행완료 보고서의 "○○ 소방본부장ㆍ소방서장 귀하"를 실제 관할소방서 이름으로 채우기 위한 최선 추정.
+  // 정확한 관할 구역은 소방서마다 다르고 공식 API가 없어 완전히 보장할 수 없으므로, 확실히 아는 대구 구/군과
+  // 창원(마산/창원/진해로 나뉨) 특례만 정확히 매핑하고, 나머지는 "OO시/군소방서" 일반 규칙으로 추정한다.
+  // 사용자가 site.fireStation을 직접 입력해두면 항상 그 값이 우선한다(이 추정은 그 값의 초기 제안일 뿐).
+  const DAEGU_FIRE_STATION = {
+    "중구": "중부소방서", "동구": "동부소방서", "서구": "서부소방서", "남구": "남부소방서",
+    "북구": "북부소방서", "수성구": "수성소방서", "달서구": "달서소방서", "달성군": "달성소방서"
+  };
+  const CHANGWON_FIRE_STATION = {
+    "마산합포구": "마산소방서", "마산회원구": "마산소방서",
+    "성산구": "창원소방서", "의창구": "창원소방서",
+    "진해구": "진해소방서"
+  };
+  function guessFireStation(address) {
+    const addr = (address || "").trim();
+    if (!addr) return "";
+    if (/^대구/.test(addr)) {
+      const gu = DAEGU_DISTRICTS.find((g) => addr.includes(g));
+      return (gu && DAEGU_FIRE_STATION[gu]) || "";
+    }
+    if (addr.includes("창원시")) {
+      const gu = Object.keys(CHANGWON_FIRE_STATION).find((g) => addr.includes(g));
+      if (gu) return CHANGWON_FIRE_STATION[gu];
+    }
+    const tokens = addr.split(/\s+/);
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokens[i].replace(/[^가-힣]/g, "");
+      if (/^[가-힣]{2,}(시|군)$/.test(t) && !/(특별시|광역시|특별자치시|특별자치도)$/.test(t)) {
+        return `${t}소방서`;
+      }
+    }
+    return "";
+  }
+
   function showScreen(id) {
     $$(".screen").forEach((s) => s.classList.remove("active"));
     $("#" + id).classList.add("active");
@@ -319,7 +353,7 @@
   }
 
   const SITE_FORM_FIELDS = [
-    "siteName", "siteAddress", "siteContactName", "siteContactPhone",
+    "siteName", "siteAddress", "siteContactName", "siteContactPhone", "siteFireStation",
     "siteBuildingType", "siteArea", "siteFloorInfo", "siteApprovalDate", "siteStructure",
     "siteFireManagerName", "siteFireManagerPhone", "siteFireManagerAppointDate", "siteFireManagerEduDate",
     "siteEngineerName", "siteEngineerPhone", "siteNotes",
@@ -501,6 +535,7 @@
       address: $("#siteAddress").value.trim(),
       contactName: $("#siteContactName").value.trim(),
       contactPhone: $("#siteContactPhone").value.trim(),
+      fireStation: $("#siteFireStation").value.trim(),
       buildingType: $("#siteBuildingType").value.trim(),
       area: $("#siteArea").value.trim(),
       floorInfo: $("#siteFloorInfo").value.trim(),
@@ -597,9 +632,17 @@
     }
   }
 
+  // 주소만으로 확실히 알 수 있는 정보가 아니라 최선 추정이므로, 이미 값이 있으면(사용자가 고쳐뒀으면) 덮어쓰지 않는다.
+  function autoSuggestFireStation(address) {
+    if ($("#siteFireStation").value.trim()) return;
+    const guess = guessFireStation(address);
+    if (guess) $("#siteFireStation").value = guess;
+  }
+
   $("#btnLookupBldReg").addEventListener("click", () => {
     lastAutoBldRegAddress = $("#siteAddress").value.trim();
     lookupBldRegForCurrentAddress();
+    autoSuggestFireStation(lastAutoBldRegAddress);
   });
 
   $("#siteAddress").addEventListener("blur", () => {
@@ -608,6 +651,7 @@
       lastAutoBldRegAddress = address;
       lookupBldRegForCurrentAddress();
     }
+    if (address) autoSuggestFireStation(address);
   });
 
   async function openSiteDetail(id) {
@@ -657,6 +701,7 @@
     $("#siteAddress").value = site.address || "";
     $("#siteContactName").value = site.contactName || "";
     $("#siteContactPhone").value = site.contactPhone || "";
+    $("#siteFireStation").value = site.fireStation || "";
     $("#siteBuildingType").value = site.buildingType || "";
     $("#siteArea").value = site.area || "";
     $("#siteFloorInfo").value = site.floorInfo || "";
@@ -1306,6 +1351,8 @@
     const contactPhone = site ? site.contactPhone || "" : "";
     const managerName = site ? site.fireManagerName || "" : "";
     const managerPhone = site ? site.fireManagerPhone || "" : "";
+    const fireStation = site ? (site.fireStation || guessFireStation(site.address)) : "";
+    const fireStationLine = fireStation ? `${escapeHtml(fireStation)}장 귀하` : "○○ 소방본부장ㆍ소방서장 귀하";
 
     const detailRowsHtml = resolved.map((def, idx) => `
       <tr>
@@ -1317,7 +1364,6 @@
         </td>
         <td class="did-photo completion-photo-cell">${photoCellHtml(def, "before")}</td>
         <td class="did-photo completion-photo-cell">${photoCellHtml(def, "after")}</td>
-        <td class="did-result">완료</td>
       </tr>
     `).join("");
 
@@ -1381,7 +1427,7 @@
         <div class="official-form-sign">
           <div>${todayStr}</div>
           <div>관계인: ${escapeHtml(contactName || "")}　　　　　(서명 또는 인)</div>
-          <div>○○ 소방본부장ㆍ소방서장 귀하</div>
+          <div>${fireStationLine}</div>
         </div>
 
         <div class="official-form-note">
@@ -1407,13 +1453,11 @@
                 <th class="did-no">번호</th>
                 <th class="did-content">이행조치 내용</th>
                 <th class="did-photo" colspan="2">이행완료 보고서 증빙자료</th>
-                <th class="did-result">이행결과</th>
               </tr>
               <tr>
                 <th colspan="2" class="official-table-note">1. 이행 조치 건별 전ㆍ후 사진&nbsp;&nbsp; 2. 공사계약서 등 증빙서류 첨부(별첨)</th>
                 <th class="did-photo">이행 전</th>
                 <th class="did-photo">이행 후</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>${detailRowsHtml}</tbody>
@@ -1421,7 +1465,7 @@
         </div>
       </div>
     `;
-    lastCompletionReportData = { site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr };
+    lastCompletionReportData = { site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation };
     showScreen("screen-completion-report");
   }
 
@@ -1457,14 +1501,66 @@
 
   $("#btnPrintCompletionReport").addEventListener("click", () => window.print());
 
+  async function generateCompletionReportPdfBlob() {
+    const el = $("#completionReportContent");
+    return await html2pdf()
+      .set({
+        margin: 8,
+        filename: "report.pdf",
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
+      })
+      .from(el)
+      .outputPdf("blob");
+  }
+
+  // 파일 공유를 지원하는 브라우저(모바일 대부분)면 공유 시트를 띄우고, 아니면 파일을 바로 다운로드한다.
+  async function shareOrDownloadFile(blob, filename, mimeType) {
+    const file = new File([blob], filename, { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "이행완료 보고서" });
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return; // 사용자가 공유를 취소함
+        // 그 외 오류(공유 대상 없음 등)면 아래에서 다운로드로 대체 처리
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(`${filename} 파일이 다운로드되었습니다. 원하는 방법으로 공유해주세요.`, "success");
+  }
+
   $("#btnShareCompletionReport").addEventListener("click", async () => {
-    const site = await FireDB.getSite(currentDeficiencySiteId);
-    const text = `[소방시설등의 자체점검 결과 이행완료 보고서]\n현장: ${site ? site.name : ""}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: "이행완료 보고서", text }); } catch (e) { /* 사용자 취소 */ }
-    } else if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      toast("보고서 요약이 클립보드에 복사되었습니다. '인쇄 / PDF 저장' 버튼으로 상세 보고서를 저장할 수 있습니다.");
+    if (!lastCompletionReportData) return;
+    const format = await pickShareFormat();
+    if (!format) return;
+    const btn = $("#btnShareCompletionReport");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "생성 중...";
+    try {
+      const filenameBase = `이행완료보고서_${lastCompletionReportData.siteName}`;
+      if (format === "hwpx") {
+        const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
+        await shareOrDownloadFile(blob, `${filenameBase}.hwpx`, "application/hwp+zip");
+      } else {
+        const blob = await generateCompletionReportPdfBlob();
+        await shareOrDownloadFile(blob, `${filenameBase}.pdf`, "application/pdf");
+      }
+    } catch (err) {
+      toast("파일 생성에 실패했습니다: " + err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
     }
   });
 

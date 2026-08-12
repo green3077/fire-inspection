@@ -142,6 +142,11 @@ const HwpxExport = (() => {
     replaceNthMatchingText(doc, (s) => s.includes("지적내역서") && s.includes("대상물:"), 0, (orig) =>
       orig.replace(/대상물:\s*$/, `대상물: ${data.siteName}`)
     );
+
+    // "○○ 소방본부장ㆍ소방서장 귀하" - 실제 관할소방서 이름을 알면 그것으로 교체 ("귀하"는 별도 run이라 손대지 않음).
+    if (data.fireStation) {
+      replaceNthMatchingText(doc, (s) => s.includes("소방본부장"), 0, () => `   ${data.fireStation}장 `);
+    }
   }
 
   // 문단(hp:p)의 텍스트를 clear하고 새 텍스트로 교체 (하나의 run만 남김) - 여러 줄이 필요하면 caller가 문단을 복제해서 사용.
@@ -337,7 +342,7 @@ const HwpxExport = (() => {
 
   // resolved: 완료된 지적사항 배열 (def.beforePhotoIds/afterPhotoIds/floor/location/code/description)
   // photoMap: Map(photoId -> 사진 레코드, app.js의 FireDB.getPhotosBySite() 결과)
-  async function generateCompletionReportHwpx({ site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr }) {
+  async function generateCompletionReportHwpx({ site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation }) {
     const res = await fetch(TEMPLATE_URL);
     if (!res.ok) throw new Error("template_fetch_failed_" + res.status);
     const buf = await res.arrayBuffer();
@@ -354,7 +359,7 @@ const HwpxExport = (() => {
       throw new Error("hwpx_template_parse_error");
     }
 
-    fillCoverPage(sectionDoc, { site, company, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr });
+    fillCoverPage(sectionDoc, { site, company, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation });
 
     const tbls = Array.from(sectionDoc.getElementsByTagNameNS(HP, "tbl"));
     const deficiencyTbl = tbls[tbls.length - 1];
