@@ -461,6 +461,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .modal-actions .btn { margin-top: 0; }
 .modal-actions-col { flex-direction: column; }
 
+/* 외부 접속 로그인 게이트 */
+.login-gate {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 400;
+  padding: 24px;
+}
+.login-box { width: 100%; max-width: 380px; }
+.login-box h1 { text-align: center; margin: 0 0 28px; }
+.login-brand-main { color: var(--accent-dark); }
+.login-brand-sub { color: var(--gold); }
+.login-error { color: var(--danger); font-weight: 700; font-size: 15px; margin: -4px 0 14px; text-align: center; }
+
 /* 지적사항 */
 .deficiency-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
 .deficiency-toolbar .btn { width: auto; flex: 1; min-width: 150px; margin-top: 0; }

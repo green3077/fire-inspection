@@ -1751,6 +1751,8 @@
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
     $("#claudeApiKey").value = ClaudeFill.getPassword();
     renderDriveStatus();
+    $("#authUsername").value = Auth.getUsername();
+    $("#authPassword").value = "";
   }
 
   function renderDriveStatus() {
@@ -1774,6 +1776,18 @@
     const password = $("#claudeApiKey").value.trim();
     ClaudeFill.savePassword(password);
     toast(ClaudeFill.isConfigured() ? "저장되었습니다. 이제 파일 업로드 시 AI가 자동으로 분석합니다." : "비밀번호가 삭제되었습니다.");
+  });
+
+  $("#btnSaveAuth").addEventListener("click", () => {
+    Auth.changeCredentials($("#authUsername").value, $("#authPassword").value);
+    $("#authPassword").value = "";
+    $("#authUsername").value = Auth.getUsername();
+    toast("외부 접속 아이디/비밀번호가 저장되었습니다.");
+  });
+
+  $("#btnAuthLogout").addEventListener("click", () => {
+    Auth.logout();
+    toast("외부 접속 로그아웃되었습니다. 다음에 열면 다시 로그인해야 합니다.");
   });
 
   async function renderRouteList() {
@@ -1858,8 +1872,35 @@
   });
 
   // ================= 초기화 =================
-  $("#categoryList").innerHTML = ChecklistTemplate.map((g) => `<option value="${escapeHtml(g.category)}">`).join("");
-  renderSites();
-  showScreen("screen-home");
-  renderHomeTodo();
+  function bootApp() {
+    $("#categoryList").innerHTML = ChecklistTemplate.map((g) => `<option value="${escapeHtml(g.category)}">`).join("");
+    renderSites();
+    showScreen("screen-home");
+    renderHomeTodo();
+  }
+
+  // 외부 접속(GitHub Pages 등)일 때만 로그인 게이트를 띄운다 - 사무실 LAN/로컬은 그대로 통과.
+  function attemptLogin() {
+    const username = $("#loginUsername").value.trim();
+    const password = $("#loginPassword").value;
+    if (Auth.tryLogin(username, password)) {
+      $("#loginError").classList.add("hidden");
+      $("#loginGate").classList.add("hidden");
+      bootApp();
+    } else {
+      $("#loginError").classList.remove("hidden");
+      $("#loginPassword").value = "";
+      $("#loginPassword").focus();
+    }
+  }
+  $("#btnLogin").addEventListener("click", attemptLogin);
+  $("#loginUsername").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
+  $("#loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
+
+  if (Auth.isLoggedIn()) {
+    bootApp();
+  } else {
+    $("#loginGate").classList.remove("hidden");
+    $("#loginUsername").focus();
+  }
 })();

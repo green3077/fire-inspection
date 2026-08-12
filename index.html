@@ -8,6 +8,15 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="loginGate" class="login-gate hidden">
+  <div class="login-box">
+    <h1><span class="brand-main login-brand-main">소방점검</span><span class="brand-sub login-brand-sub">관리</span></h1>
+    <div class="field"><span>아이디</span><input type="text" id="loginUsername" autocomplete="username"></div>
+    <div class="field"><span>비밀번호</span><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div id="loginError" class="login-error hidden">아이디 또는 비밀번호가 올바르지 않습니다.</div>
+    <button class="btn btn-primary btn-large" id="btnLogin" type="button">로그인</button>
+  </div>
+</div>
 <header class="app-header" id="appHeader">
   <button class="header-btn header-btn-back" id="btnHeaderBack" type="button">← 뒤로</button>
   <h1 id="appHeaderTitle"><span class="brand-main">소방점검</span><span class="brand-sub">관리</span></h1>
@@ -330,6 +339,14 @@
         <span>자동 저장 사용</span>
       </label>
     </div>
+    <div class="card" id="authSettingsCard">
+      <h2>🔒 외부 접속 비밀번호</h2>
+      <div class="hint-text">외부 링크(GitHub Pages)로 접속할 때만 물어보는 아이디/비밀번호입니다. 사무실 Wi-Fi나 이 컴퓨터에서 직접 여는 경우에는 물어보지 않습니다.</div>
+      <div class="field"><span>아이디</span><input type="text" id="authUsername"></div>
+      <div class="field"><span>새 비밀번호 (바꿀 때만 입력)</span><input type="password" id="authPassword" placeholder="비워두면 기존 비밀번호 유지"></div>
+      <button class="btn btn-secondary" id="btnSaveAuth">저장</button>
+      <button class="btn btn-secondary" id="btnAuthLogout">외부 접속 로그아웃</button>
+    </div>
   </section>
 
 </div>
@@ -348,6 +365,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="auth.js"></script>
 <script src="db.js"></script>
 <script src="checklist-data.js"></script>
 <script src="ui.js"></script>
