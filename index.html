@@ -8,9 +8,9 @@
 </head>
 <body>
 <header class="app-header" id="appHeader">
-  <button class="header-btn header-btn-back header-btn-off" id="btnHeaderBack" type="button">← 뒤로</button>
+  <button class="header-btn header-btn-back" id="btnHeaderBack" type="button">← 뒤로</button>
   <h1 id="appHeaderTitle">🧯 소방점검 관리</h1>
-  <button class="header-btn header-btn-save header-btn-off" id="btnHeaderSave" type="button">저장</button>
+  <button class="header-btn header-btn-home" id="btnHeaderHome" type="button">처음으로</button>
 </header>
 
 <div id="toastContainer" class="toast-container no-print"></div>
@@ -45,6 +45,10 @@
       <button class="home-tile" id="btnHomeInspectionTeam">
         <span class="home-tile-icon">🧯</span>
         <span class="home-tile-label">점검팀</span>
+      </button>
+      <button class="home-tile home-tile-wide" id="btnHomeDeficiencies">
+        <span class="home-tile-icon">📌</span>
+        <span class="home-tile-label">지적사항</span>
       </button>
     </div>
 
@@ -275,8 +279,7 @@
 </div>
 
 <nav class="tab-bar no-print">
-  <button class="tab-btn" data-tab="screen-sites">📋 점검</button>
-  <button class="tab-btn" data-tab="screen-deficiency-hub">🔧 지적사항</button>
+  <button class="tab-btn" data-tab="screen-sites">📋 거래처보기</button>
   <button class="tab-btn" data-tab="screen-route">🗓️ 일정관리</button>
   <button class="tab-btn" data-tab="screen-settings">⚙️ 설정</button>
 </nav>

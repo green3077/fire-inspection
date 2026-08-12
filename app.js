@@ -25,11 +25,22 @@
     $$(".screen").forEach((s) => s.classList.remove("active"));
     $("#" + id).classList.add("active");
     $$(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
-    $(".tab-bar").classList.toggle("hidden", id === "screen-home");
-    const isSiteForm = id === "screen-site-form";
-    $("#btnHeaderBack").classList.toggle("header-btn-off", !isSiteForm);
-    $("#btnHeaderSave").classList.toggle("header-btn-off", !isSiteForm);
   }
+
+  // 헤더의 "← 뒤로" 버튼은 화면마다 원래 있던 개별 뒤로가기 버튼을 그대로 대신 눌러준다 -
+  // (그 버튼들이 이미 각 화면에 맞는 재조회/상태 정리를 다 하고 있으므로 로직을 중복시키지 않는다)
+  // 매핑에 없는 화면(홈, 거래처보기/일정관리/설정/지적사항 허브 같은 최상위 탭 화면)은 홈으로 이동한다.
+  const BACK_DELEGATE = {
+    "screen-construction-team": "btnBackFromConstructionTeam",
+    "screen-inspection-team": "btnBackFromInspectionTeam",
+    "screen-site-entry-choice": "btnCancelEntryChoice",
+    "screen-site-form": "btnCancelSiteForm",
+    "screen-site-detail": "btnBackToSites",
+    "screen-checklist": "btnBackFromChecklist",
+    "screen-report": "btnBackFromReport",
+    "screen-deficiencies": "btnBackFromDeficiencies",
+    "screen-completion-report": "btnBackFromCompletionReport"
+  };
 
   // ---------- 홈 ----------
   const WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
@@ -73,12 +84,18 @@
   }
 
   $("#appHeaderTitle").addEventListener("click", goHome);
-  $("#btnHeaderBack").addEventListener("click", () => $("#btnCancelSiteForm").click());
-  $("#btnHeaderSave").addEventListener("click", () => $("#btnSaveSite").click());
+  $("#btnHeaderHome").addEventListener("click", goHome);
+  $("#btnHeaderBack").addEventListener("click", () => {
+    const current = $(".screen.active");
+    const delegateId = current && BACK_DELEGATE[current.id];
+    if (delegateId) $("#" + delegateId).click();
+    else goHome();
+  });
   $("#btnHomeAddSite").addEventListener("click", () => $("#btnAddSite").click());
   $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
   $("#btnHomeConstructionTeam").addEventListener("click", () => showScreen("screen-construction-team"));
   $("#btnHomeInspectionTeam").addEventListener("click", () => showScreen("screen-inspection-team"));
+  $("#btnHomeDeficiencies").addEventListener("click", () => { renderDeficiencyHub(); showScreen("screen-deficiency-hub"); });
   $("#btnBackFromConstructionTeam").addEventListener("click", goHome);
   $("#btnBackFromInspectionTeam").addEventListener("click", goHome);
 
@@ -88,7 +105,6 @@
       const tab = btn.dataset.tab;
       if (tab === "screen-sites") renderSites();
       if (tab === "screen-route") renderRoute();
-      if (tab === "screen-deficiency-hub") renderDeficiencyHub();
       if (tab === "screen-settings") renderSettings();
       showScreen(tab);
     });
@@ -139,7 +155,7 @@
     if (inProgress.length > 0) return inProgress[0];
     const insp = {
       siteId,
-      type: "작동기능점검",
+      type: "작동점검",
       scheduledDate: todayISO(),
       inspector: "",
       status: "scheduled",
@@ -578,8 +594,8 @@
         <div class="field">
           <span>점검 종류</span>
           <select class="insp-field" data-field="type">
-            <option value="작동기능점검" ${insp.type === "작동기능점검" ? "selected" : ""}>작동기능점검</option>
-            <option value="종합정밀점검" ${insp.type === "종합정밀점검" ? "selected" : ""}>종합정밀점검</option>
+            <option value="작동점검" ${insp.type === "작동점검" ? "selected" : ""}>작동점검</option>
+            <option value="종합점검" ${insp.type === "종합점검" ? "selected" : ""}>종합점검</option>
           </select>
         </div>
         <div class="field"><span>점검일</span><input type="date" class="insp-field" data-field="scheduledDate" value="${escapeHtml(insp.scheduledDate || "")}"></div>
@@ -1175,9 +1191,9 @@
           </tr>
           <tr>
             <td class="field-label">관계인</td>
-            <td>성명: ${escapeHtml(contactName || "-")} 　전화번호: ${escapeHtml(contactPhone || "-")}</td>
+            <td>성명: ${escapeHtml(contactName || "-")}<br>전화번호: <span class="nowrap">${escapeHtml(contactPhone || "-")}</span></td>
             <td class="field-label">소방안전관리자</td>
-            <td>성명: ${escapeHtml(managerName || "-")} 　전화번호: ${escapeHtml(managerPhone || "-")}</td>
+            <td>성명: ${escapeHtml(managerName || "-")}<br>전화번호: <span class="nowrap">${escapeHtml(managerPhone || "-")}</span></td>
           </tr>
           <tr>
             <td class="field-label">소재지</td>
@@ -1195,7 +1211,7 @@
           </tr>
           <tr>
             <td class="field-label">대표이사</td>
-            <td colspan="3">성명: ${escapeHtml(company.ceo || "-")} 　전화번호: ${escapeHtml(company.phone || "-")}</td>
+            <td colspan="3">성명: ${escapeHtml(company.ceo || "-")} 　전화번호: <span class="nowrap">${escapeHtml(company.phone || "-")}</span></td>
           </tr>
           <tr>
             <td class="field-label">소재지</td>
