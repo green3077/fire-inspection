@@ -207,6 +207,39 @@ textarea { resize: vertical; }
 .hidden { display: none !important; }
 
 .section-actions { margin-bottom: 16px; }
+
+.sort-toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+.sort-btn {
+  flex: 1;
+  padding: 11px 4px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.region-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.region-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.region-btn-name { font-size: 16px; font-weight: 800; color: var(--accent-dark); }
+.region-btn-count { font-size: 13px; color: var(--gold); background: var(--gold-bg); padding: 3px 10px; border-radius: 999px; font-weight: 700; white-space: nowrap; }
+.region-back-row { margin-bottom: 14px; }
 .row-actions { display: flex; gap: 10px; margin-top: 4px; }
 .row-actions .btn { margin-top: 8px; }
 .list-heading { font-size: 18px; color: var(--accent-dark); font-weight: 800; margin: 20px 4px 10px; }

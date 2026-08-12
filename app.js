@@ -5,6 +5,8 @@
   let currentInspection = null;  // 체크리스트/보고서/지적사항 화면에서 다루는 점검(메모리 상 사본)
   let activeObjectUrls = [];
   let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
+  let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
+  let sitesSelectedRegion = null; // 지역별 모드에서 드릴다운한 지역 (구/도 이름), null이면 지역 버튼 목록 표시 중
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -34,6 +36,43 @@
   function revokeObjectUrls() {
     activeObjectUrls.forEach((u) => URL.revokeObjectURL(u));
     activeObjectUrls = [];
+  }
+
+  // ---------- 거래처 지역 분류 (가나다순/지역별 정렬용) ----------
+  // 대구는 구/군 단위까지, 그 외 지역은 도/광역시 단위까지만 분류한다(사용자 요청).
+  // "달서구"는 "서구"를 부분 문자열로 포함하므로 반드시 먼저 검사해야 오분류를 피할 수 있다.
+  const DAEGU_DISTRICTS = ["달서구", "달성군", "군위군", "수성구", "동구", "서구", "남구", "북구", "중구"];
+  const PROVINCE_PATTERNS = [
+    [/^대구/, "대구"],
+    [/^서울/, "서울"],
+    [/^부산/, "부산"],
+    [/^인천/, "인천"],
+    [/^광주/, "광주"],
+    [/^대전/, "대전"],
+    [/^울산/, "울산"],
+    [/^세종/, "세종"],
+    [/^경기/, "경기"],
+    [/^강원/, "강원"],
+    [/^충청북|^충북/, "충북"],
+    [/^충청남|^충남/, "충남"],
+    [/^전라북|^전북/, "전북"],
+    [/^전라남|^전남/, "전남"],
+    [/^경상북|^경북/, "경북"],
+    [/^경상남|^경남/, "경남"],
+    [/^제주/, "제주"]
+  ];
+  function classifyRegion(address) {
+    const addr = (address || "").trim();
+    if (!addr) return "지역 미상";
+    for (const [re, label] of PROVINCE_PATTERNS) {
+      if (!re.test(addr)) continue;
+      if (label === "대구") {
+        const gu = DAEGU_DISTRICTS.find((g) => addr.includes(g));
+        return gu || "대구 기타";
+      }
+      return label;
+    }
+    return "지역 미상";
   }
 
   function showScreen(id) {
@@ -126,6 +165,75 @@
   });
 
   // ================= 현장 =================
+  function siteCardHtml(s, lastBySite) {
+    const last = lastBySite.get(s.id);
+    return `
+      <div class="list-card" data-id="${s.id}">
+        <div class="list-card-title">${escapeHtml(s.name)}</div>
+        <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}${s.contactName ? " · 담당자: " + escapeHtml(s.contactName) : ""}</div>
+        <div class="list-card-sub">${last ? `마지막 점검일: ${escapeHtml(last.completedDate || last.scheduledDate)} · 점검자: ${escapeHtml(last.inspector || "-")}` : "점검 이력 없음"}</div>
+        <div class="list-card-sub site-card-phone-row">
+          <span>${s.contactPhone ? "📞 " + escapeHtml(formatPhone(s.contactPhone)) : "연락처 미입력"}</span>
+          ${s.contactPhone ? `<a class="btn-call" href="tel:${escapeHtml(s.contactPhone)}">전화걸기</a>` : ""}
+        </div>
+      </div>
+    `;
+  }
+  function bindSiteCardClicks(container) {
+    Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
+      el.addEventListener("click", () => openSiteChecklist(el.dataset.id));
+      const callBtn = el.querySelector(".btn-call");
+      if (callBtn) callBtn.addEventListener("click", (e) => e.stopPropagation());
+    });
+  }
+  function renderSiteCardsInto(list, sitesArr, lastBySite, emptyMessage) {
+    if (sitesArr.length === 0) {
+      list.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
+      return;
+    }
+    list.innerHTML = sitesArr.map((s) => siteCardHtml(s, lastBySite)).join("");
+    bindSiteCardClicks(list);
+  }
+
+  function renderSitesByRegion(sites, lastBySite) {
+    const list = $("#sitesList");
+
+    if (sitesSelectedRegion) {
+      const filtered = sites.filter((s) => classifyRegion(s.address) === sitesSelectedRegion);
+      const backBtnHtml = `<button class="btn btn-secondary region-back-row" id="btnBackToRegionList">← 지역 목록으로 (${escapeHtml(sitesSelectedRegion)})</button>`;
+      if (filtered.length === 0) {
+        list.innerHTML = `${backBtnHtml}<div class="empty-state">이 지역에 등록된 현장이 없습니다.</div>`;
+      } else {
+        list.innerHTML = backBtnHtml + filtered.map((s) => siteCardHtml(s, lastBySite)).join("");
+        bindSiteCardClicks(list);
+      }
+      $("#btnBackToRegionList").addEventListener("click", () => { sitesSelectedRegion = null; renderSites(); });
+      return;
+    }
+
+    // 지역 버튼 목록: 대구는 구/군 단위로, 그 외는 도/광역시 단위로, 실제로 거래처가 있는 지역만 표시.
+    const counts = new Map();
+    sites.forEach((s) => {
+      const region = classifyRegion(s.address);
+      counts.set(region, (counts.get(region) || 0) + 1);
+    });
+    const daeguOrder = DAEGU_DISTRICTS.filter((g) => counts.has(g));
+    const otherOrder = PROVINCE_PATTERNS.map(([, label]) => label).filter((l) => l !== "대구" && counts.has(l));
+    const orderedRegions = [...daeguOrder, ...otherOrder];
+    if (counts.has("대구 기타")) orderedRegions.push("대구 기타");
+    if (counts.has("지역 미상")) orderedRegions.push("지역 미상");
+
+    list.innerHTML = `<div class="region-grid">${orderedRegions.map((r) => `
+      <button class="region-btn" data-region="${escapeHtml(r)}">
+        <span class="region-btn-name">${escapeHtml(r)}</span>
+        <span class="region-btn-count">${counts.get(r)}개</span>
+      </button>
+    `).join("")}</div>`;
+    Array.from(list.querySelectorAll(".region-btn")).forEach((btn) => {
+      btn.addEventListener("click", () => { sitesSelectedRegion = btn.dataset.region; renderSites(); });
+    });
+  }
+
   async function renderSites() {
     const [sites, inspections] = await Promise.all([FireDB.getAllSites(), FireDB.getAllInspections()]);
     sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -143,26 +251,27 @@
       list.innerHTML = `<div class="empty-state">등록된 현장이 없습니다.<br>현장을 추가해 점검을 시작하세요.</div>`;
       return;
     }
-    list.innerHTML = sites.map((s) => {
-      const last = lastBySite.get(s.id);
-      return `
-        <div class="list-card" data-id="${s.id}">
-          <div class="list-card-title">${escapeHtml(s.name)}</div>
-          <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}${s.contactName ? " · 담당자: " + escapeHtml(s.contactName) : ""}</div>
-          <div class="list-card-sub">${last ? `마지막 점검일: ${escapeHtml(last.completedDate || last.scheduledDate)} · 점검자: ${escapeHtml(last.inspector || "-")}` : "점검 이력 없음"}</div>
-          <div class="list-card-sub site-card-phone-row">
-            <span>${s.contactPhone ? "📞 " + escapeHtml(formatPhone(s.contactPhone)) : "연락처 미입력"}</span>
-            ${s.contactPhone ? `<a class="btn-call" href="tel:${escapeHtml(s.contactPhone)}">전화걸기</a>` : ""}
-          </div>
-        </div>
-      `;
-    }).join("");
-    $$("#sitesList .list-card").forEach((el) => {
-      el.addEventListener("click", () => openSiteChecklist(el.dataset.id));
-      const callBtn = el.querySelector(".btn-call");
-      if (callBtn) callBtn.addEventListener("click", (e) => e.stopPropagation());
-    });
+
+    if (sitesSortMode === "region") {
+      renderSitesByRegion(sites, lastBySite);
+      return;
+    }
+    renderSiteCardsInto(list, sites, lastBySite, "등록된 현장이 없습니다.");
   }
+
+  $("#btnSortByName").addEventListener("click", () => {
+    sitesSortMode = "name";
+    sitesSelectedRegion = null;
+    $("#btnSortByName").classList.add("active");
+    $("#btnSortByRegion").classList.remove("active");
+    renderSites();
+  });
+  $("#btnSortByRegion").addEventListener("click", () => {
+    sitesSortMode = "region";
+    $("#btnSortByRegion").classList.add("active");
+    $("#btnSortByName").classList.remove("active");
+    renderSites();
+  });
 
   async function getOrCreateActiveInspection(siteId) {
     const inspections = await FireDB.getInspectionsBySite(siteId);
