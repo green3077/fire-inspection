@@ -74,6 +74,16 @@
     }
     return "지역 미상";
   }
+  // 요약줄의 "N개 지역" 개수용 - 버튼 그리드는 대구를 구/군까지 쪼개서 보여주지만,
+  // 이 개수는 광역시/도 단위로만 세어 대구의 여러 구가 지역 개수를 부풀리지 않게 한다.
+  function classifyBroadRegion(address) {
+    const addr = (address || "").trim();
+    if (!addr) return "지역 미상";
+    for (const [re, label] of PROVINCE_PATTERNS) {
+      if (re.test(addr)) return label;
+    }
+    return "지역 미상";
+  }
 
   function showScreen(id) {
     $$(".screen").forEach((s) => s.classList.remove("active"));
@@ -259,7 +269,7 @@
         const inRegion = sites.filter((s) => classifyRegion(s.address) === sitesSelectedRegion).length;
         summary.innerHTML = `<strong>${sitesSelectedRegion}</strong> ${inRegion}개 · 전체 ${sites.length}개`;
       } else {
-        const regionCount = new Set(sites.map((s) => classifyRegion(s.address))).size;
+        const regionCount = new Set(sites.map((s) => classifyBroadRegion(s.address))).size;
         summary.innerHTML = `전체 <strong>${sites.length}개</strong> 거래처 · ${regionCount}개 지역`;
       }
       renderSitesByRegion(sites, lastBySite);
