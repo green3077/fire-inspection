@@ -482,6 +482,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .deficiency-resolved-row input[type="checkbox"] { width: 22px; height: 22px; }
 .deficiency-card-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .deficiency-card-actions .btn { width: auto; padding: 9px 18px; font-size: 14px; margin-top: 0; }
+.setting-toggle-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 16px; font-weight: 600; }
+.setting-toggle-row input[type="checkbox"] { width: 24px; height: 24px; }
 
 .badge-open { background: var(--danger-bg); color: var(--danger); }
 .badge-resolved { background: var(--good-bg); color: var(--good); }

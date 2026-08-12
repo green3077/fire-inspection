@@ -12,10 +12,10 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  // 업로드/생성되는 파일을 구글 드라이브에 백업 - 연결 안 돼 있으면 아무 일도 하지 않고,
-  // 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
+  // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
+  // 아무 일도 하지 않고, 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
   function backupToDrive(siteId, category, filename, blob) {
-    if (!blob || !DriveBackup.isConnected()) return;
+    if (!blob) return;
     (siteId ? FireDB.getSite(siteId) : Promise.resolve(null))
       .then((site) => DriveBackup.uploadToSite(site ? site.name : null, category, filename, blob))
       .catch(() => {});
@@ -558,7 +558,7 @@
         }
       }
       if (!result) result = await ClientImport.parseClientFile(file);
-      if (DriveBackup.isConnected()) {
+      {
         const guessName = (result.fields && result.fields.name) || file.name.replace(/\.[^.]+$/, "");
         DriveBackup.uploadToSite(guessName, "거래처_등록자료", file.name, file).catch(() => {});
       }
@@ -1754,28 +1754,12 @@
   }
 
   function renderDriveStatus() {
-    const connected = DriveBackup.isConnected();
-    $("#driveStatus").textContent = connected
-      ? `연결됨${DriveBackup.getEmail() ? " (" + DriveBackup.getEmail() + ")" : ""} - 자동 저장 중`
-      : "연결 안 됨 - 파일이 자동 저장되지 않습니다.";
-    $("#btnDriveConnect").classList.toggle("hidden", connected);
-    $("#btnDriveDisconnect").classList.toggle("hidden", !connected);
+    $("#driveEnabledToggle").checked = DriveBackup.isEnabled();
   }
 
-  $("#btnDriveConnect").addEventListener("click", async () => {
-    try {
-      await DriveBackup.signIn();
-      renderDriveStatus();
-      toast("구글 드라이브에 연결되었습니다.");
-    } catch (err) {
-      toast("구글 드라이브 연결에 실패했습니다: " + err.message, "error");
-    }
-  });
-
-  $("#btnDriveDisconnect").addEventListener("click", () => {
-    DriveBackup.signOut();
-    renderDriveStatus();
-    toast("구글 드라이브 연결이 해제되었습니다.");
+  $("#driveEnabledToggle").addEventListener("change", (e) => {
+    DriveBackup.setEnabled(e.target.checked);
+    toast(e.target.checked ? "자동 저장을 켰습니다." : "자동 저장을 껐습니다.");
   });
 
   $("#btnSaveApiKeys").addEventListener("click", () => {
@@ -1878,16 +1862,4 @@
   renderSites();
   showScreen("screen-home");
   renderHomeTodo();
-
-  // 구글 드라이브 조용한 재로그인 - GIS 팝업은 페이지 로드 직후엔 브라우저가 막으므로,
-  // 사용자의 첫 클릭/키입력 시점까지 기다렸다가 한 번만 시도한다.
-  function trySilentDriveSignInOnce() {
-    document.removeEventListener("pointerdown", trySilentDriveSignInOnce);
-    document.removeEventListener("keydown", trySilentDriveSignInOnce);
-    DriveBackup.trySilentSignIn().then(() => {
-      if (document.getElementById("screen-settings").classList.contains("active")) renderDriveStatus();
-    });
-  }
-  document.addEventListener("pointerdown", trySilentDriveSignInOnce, { once: true });
-  document.addEventListener("keydown", trySilentDriveSignInOnce, { once: true });
 })();
