@@ -619,7 +619,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
     content: attr(data-photo-label);
     display: block; font-weight: 800; color: var(--accent-dark); margin-bottom: 8px; font-size: 13px;
   }
-  .completion-photo-cell img { max-height: 320px; margin: 0 0 6px; }
+  .completion-photo-cell img { width: 100%; max-width: 100%; height: auto; max-height: none; margin: 0 0 6px; }
   .completion-photo-cell .no-photo { padding: 6px 0; text-align: left; }
 
   .official-form-legal, .official-form-sign, .official-form-note { font-size: 13px; }
