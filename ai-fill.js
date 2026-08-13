@@ -1,22 +1,20 @@
-// 업로드 파일(PDF/엑셀/워드/한글/HWPX/사진)을 Claude AI로 분석해 폼 입력칸에 자동으로 채워주는 모듈.
-// 실제 Anthropic 호환 게이트웨이 키는 브라우저에 두지 않고 서버(Cloudflare Worker 프록시)에만 보관한다 - 앱 공용
-// 비밀번호(설정 탭에서 입력, 로컬 저장)만 프록시로 보내 인증하면 개인 API 키 없이도 AI 분석을 쓸 수 있다.
-// 비밀번호가 없거나 호출이 실패하면 호출부(app.js)가 기존 정규식 기반 파서로 자동 폴백한다.
-const ClaudeFill = (() => {
-  const PASSWORD_STORAGE = "fireInspectionAiPassword";
-  const MODEL = "claude-opus-5";
-  // Cloudflare Worker로 배포한 프록시 - 실제 게이트웨이 키(factchat-cloud.mindlogic.ai)는 여기(서버 환경변수)에만 있다.
-  const PROXY_URL = "https://fire-inspection-claude-proxy.cigar-log-gemini-proxy.workers.dev/";
+// 업로드 파일(PDF/엑셀/워드/한글/HWPX/사진)을 Gemini AI로 분석해 폼 입력칸에 자동으로 채워주는 모듈.
+// 실제 Gemini API 키는 이 기기/앱에 전혀 없음 - [[project_cigar_log]]가 이미 사용 중인 공유 Cloudflare Worker
+// 프록시(cigar-log-gemini-proxy)를 그대로 호출한다. 별도 키 입력/비밀번호 없이 항상 동작한다.
+// 호출이 실패하면 호출부(app.js)가 기존 정규식 기반 파서로 자동 폴백한다.
+const AiFill = (() => {
+  const ENABLED_STORAGE = "fireInspectionAiEnabled";
+  const PROXY_BASE = "https://cigar-log-gemini-proxy.cigar-log-gemini-proxy.workers.dev";
+  const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+  const geminiUrl = (model) => `${PROXY_BASE}/v1beta/models/${model}:generateContent`;
   const IMAGE_MEDIA_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", bmp: "image/bmp", gif: "image/gif" };
 
-  function getPassword() {
-    return (localStorage.getItem(PASSWORD_STORAGE) || "").trim();
+  function isEnabled() {
+    const v = localStorage.getItem(ENABLED_STORAGE);
+    return v === null ? true : v === "1";
   }
-  function savePassword(pw) {
-    localStorage.setItem(PASSWORD_STORAGE, (pw || "").trim());
-  }
-  function isConfigured() {
-    return !!getPassword();
+  function setEnabled(on) {
+    localStorage.setItem(ENABLED_STORAGE, on ? "1" : "0");
   }
 
   async function fileToBase64(file) {
@@ -73,55 +71,93 @@ const ClaudeFill = (() => {
     return ["pdf", "xlsx", "xls", "docx", "hwpx"].includes(ext) || !!IMAGE_MEDIA_TYPES[ext];
   }
 
-  async function buildContentBlocks(file, ext, instruction) {
+  async function buildParts(file, ext, instruction) {
     if (ext === "pdf") {
       const data = await fileToBase64(file);
-      return [
-        { type: "document", source: { type: "base64", media_type: "application/pdf", data } },
-        { type: "text", text: instruction }
-      ];
+      return [{ inline_data: { mime_type: "application/pdf", data } }, { text: instruction }];
     }
     if (IMAGE_MEDIA_TYPES[ext]) {
       const data = await fileToBase64(file);
-      return [
-        { type: "image", source: { type: "base64", media_type: IMAGE_MEDIA_TYPES[ext], data } },
-        { type: "text", text: instruction }
-      ];
+      return [{ inline_data: { mime_type: IMAGE_MEDIA_TYPES[ext], data } }, { text: instruction }];
     }
     let text = "";
     if (ext === "xlsx" || ext === "xls") text = await excelToText(file);
     else if (ext === "docx") text = await wordToText(file);
     else if (ext === "hwpx") text = await hwpxToText(file);
     if (!text || !text.trim()) return null;
-    return [{ type: "text", text: `${instruction}\n\n--- 문서 내용 ---\n${text.slice(0, 60000)}` }];
+    return [{ text: `${instruction}\n\n--- 문서 내용 ---\n${text.slice(0, 60000)}` }];
   }
 
-  async function callClaude({ system, content, schema, maxTokens }) {
-    const password = getPassword();
-    if (!password) throw new Error("claude_no_password");
-    const res = await fetch(PROXY_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-app-secret": password
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system,
-        output_config: { effort: "low", format: { type: "json_schema", schema } },
-        messages: [{ role: "user", content }]
-      })
-    });
+  // 우리 쪽 JSON 스키마(소문자 type)를 Gemini의 responseSchema 형식(대문자 Type)으로 변환.
+  function toGeminiSchema(schema) {
+    if (schema.type === "object") {
+      return {
+        type: "OBJECT",
+        properties: Object.fromEntries(Object.entries(schema.properties).map(([k, v]) => [k, toGeminiSchema(v)])),
+        required: schema.required
+      };
+    }
+    if (schema.type === "array") {
+      return { type: "ARRAY", items: toGeminiSchema(schema.items) };
+    }
+    return { type: schema.type.toUpperCase(), description: schema.description };
+  }
+
+  function friendlyError(body) {
+    try {
+      const j = JSON.parse(body);
+      return j?.error?.message || body.slice(0, 240);
+    } catch {
+      return body.slice(0, 240);
+    }
+  }
+
+  function extractJson(text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start === -1 || end === -1) throw new Error("gemini_no_json");
+      return JSON.parse(text.slice(start, end + 1));
+    }
+  }
+
+  async function callGemini({ system, parts, schema, maxTokens }) {
+    const body = {
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: toGeminiSchema(schema),
+        temperature: 0.1,
+        maxOutputTokens: maxTokens
+      }
+    };
+    let last = null;
+    for (const model of GEMINI_MODELS) {
+      const res = await fetch(geminiUrl(model), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      last = { res, model };
+      if (![400, 404].includes(res.status)) break;
+    }
+    const { res, model } = last;
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      throw new Error(`claude_api_${res.status}: ${errText.slice(0, 300)}`);
+      throw new Error(`gemini_api_${res.status}_${model}: ${friendlyError(errText)}`);
     }
     const data = await res.json();
-    if (data.stop_reason === "refusal") throw new Error("claude_refusal");
-    const textBlock = (data.content || []).find((b) => b.type === "text");
-    if (!textBlock) throw new Error("claude_no_text");
-    return JSON.parse(textBlock.text);
+    const candidate = data?.candidates?.[0];
+    if (!candidate) {
+      const blockReason = data?.promptFeedback?.blockReason;
+      throw new Error(blockReason ? `gemini_blocked_${blockReason}` : "gemini_no_candidate");
+    }
+    const text = (candidate.content?.parts || []).map((p) => p.text || "").join("");
+    if (!text) throw new Error("gemini_no_text");
+    return extractJson(text);
   }
 
   const CLIENT_FIELD_DESCRIPTIONS = {
@@ -146,19 +182,18 @@ const ClaudeFill = (() => {
   const CLIENT_SCHEMA = {
     type: "object",
     properties: Object.fromEntries(Object.entries(CLIENT_FIELD_DESCRIPTIONS).map(([k, desc]) => [k, { type: "string", description: desc }])),
-    required: Object.keys(CLIENT_FIELD_DESCRIPTIONS),
-    additionalProperties: false
+    required: Object.keys(CLIENT_FIELD_DESCRIPTIONS)
   };
 
-  const CLIENT_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 문서(소방시설 자체점검 결과보고서, 명함, 안내문 등)에서 요청된 항목을 정확히 추출하세요. 문서에 명시적으로 없는 정보는 절대 추측하지 말고 반드시 빈 문자열(\"\")로 남기세요. 전화번호와 날짜는 지정된 형식으로 정규화하세요. 같은 사람이 여러 역할(예: 관계인이자 소방안전관리자)을 겸하는 경우 해당하는 모든 필드에 채워주세요.";
+  const CLIENT_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 문서(소방시설 자체점검 결과보고서, 명함, 안내문 등)에서 요청된 항목을 정확히 추출하세요. 문서에 명시적으로 없는 정보는 절대 추측하지 말고 반드시 빈 문자열(\"\")로 남기세요. 전화번호와 날짜는 지정된 형식으로 정규화하세요. 같은 사람이 여러 역할(예: 관계인이자 소방안전관리자)을 겸하는 경우 해당하는 모든 필드에 채워주세요. 반드시 JSON으로만 응답하세요.";
 
   async function analyzeClientFile(file) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 거래처(현장) 등록에 필요한 정보를 추출해줘.";
-    const content = await buildContentBlocks(file, ext, instruction);
-    if (!content) return { failed: true, typeLabel: extTypeLabel(ext) };
-    const fields = await callClaude({ system: CLIENT_SYSTEM, content, schema: CLIENT_SCHEMA, maxTokens: 4096 });
+    const parts = await buildParts(file, ext, instruction);
+    if (!parts) return { failed: true, typeLabel: extTypeLabel(ext) };
+    const fields = await callGemini({ system: CLIENT_SYSTEM, parts, schema: CLIENT_SCHEMA, maxTokens: 4096 });
     const filledCount = Object.values(fields).filter((v) => v && String(v).trim()).length;
     return { fields, typeLabel: extTypeLabel(ext) + " (AI 분석)", lowConfidence: false, failed: filledCount === 0 };
   }
@@ -177,24 +212,22 @@ const ClaudeFill = (() => {
             code: { type: "string", description: "점검번호" },
             description: { type: "string", description: "불량내용(지적사항)" }
           },
-          required: ["category", "floor", "location", "code", "description"],
-          additionalProperties: false
+          required: ["category", "floor", "location", "code", "description"]
         }
       }
     },
-    required: ["items"],
-    additionalProperties: false
+    required: ["items"]
   };
 
-  const DEFICIENCY_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 소방시설 지적사항(불량내역) 문서에서 각 지적 항목을 표로 추출하세요. 설비 구분, 층, 설치장소, 점검번호, 불량내용을 항목별로 정리하고, 하나의 지적사항이 여러 줄/셀에 걸쳐 나뉘어 있으면 하나의 항목으로 합치세요. 표 헤더나 안내문구는 항목으로 만들지 마세요. 지적사항이 없으면 빈 배열을 반환하세요.";
+  const DEFICIENCY_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 소방시설 지적사항(불량내역) 문서에서 각 지적 항목을 표로 추출하세요. 설비 구분, 층, 설치장소, 점검번호, 불량내용을 항목별로 정리하고, 하나의 지적사항이 여러 줄/셀에 걸쳐 나뉘어 있으면 하나의 항목으로 합치세요. 표 헤더나 안내문구는 항목으로 만들지 마세요. 지적사항이 없으면 빈 배열을 반환하세요. 반드시 JSON으로만 응답하세요.";
 
   async function analyzeDeficiencyFile(file) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 소방시설 지적사항(불량내역) 목록을 추출해줘.";
-    const content = await buildContentBlocks(file, ext, instruction);
-    if (!content) return { rows: null, typeLabel: extTypeLabel(ext) };
-    const result = await callClaude({ system: DEFICIENCY_SYSTEM, content, schema: DEFICIENCY_SCHEMA, maxTokens: 8000 });
+    const parts = await buildParts(file, ext, instruction);
+    if (!parts) return { rows: null, typeLabel: extTypeLabel(ext) };
+    const result = await callGemini({ system: DEFICIENCY_SYSTEM, parts, schema: DEFICIENCY_SCHEMA, maxTokens: 8000 });
     return { rows: result.items && result.items.length ? result.items : null, typeLabel: extTypeLabel(ext) + " (AI 분석)" };
   }
 
@@ -208,5 +241,5 @@ const ClaudeFill = (() => {
     return "파일";
   }
 
-  return { getPassword, savePassword, isConfigured, isSupportedExt, analyzeClientFile, analyzeDeficiencyFile, hwpxToText };
+  return { isEnabled, setEnabled, isSupportedExt, analyzeClientFile, analyzeDeficiencyFile, hwpxToText };
 })();

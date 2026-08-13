@@ -546,12 +546,12 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
-    toast(ClaudeFill.isConfigured() ? "Claude AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요..." : "자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    toast(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요..." : "자료를 분석하고 있습니다. 잠시만 기다려주세요...");
     try {
       let result = null;
-      if (ClaudeFill.isConfigured()) {
+      if (AiFill.isEnabled()) {
         try {
-          const aiResult = await ClaudeFill.analyzeClientFile(file);
+          const aiResult = await AiFill.analyzeClientFile(file);
           if (!aiResult.unsupported) result = aiResult;
         } catch (aiErr) {
           result = null; // AI 분석 실패 시 기존 방식으로 폴백
@@ -1341,14 +1341,14 @@
     if (!file) return;
     backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
     const ext = file.name.split(".").pop().toLowerCase();
-    if (ClaudeFill.isConfigured()) toast("Claude AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    if (AiFill.isEnabled()) toast("AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요...");
     try {
       let rows = null;
       let lowConfidence = false;
       let typeLabel = "";
-      if (ClaudeFill.isConfigured() && ClaudeFill.isSupportedExt(ext)) {
+      if (AiFill.isEnabled() && AiFill.isSupportedExt(ext)) {
         try {
-          const aiResult = await ClaudeFill.analyzeDeficiencyFile(file);
+          const aiResult = await AiFill.analyzeDeficiencyFile(file);
           rows = aiResult.rows;
           typeLabel = aiResult.typeLabel;
         } catch (aiErr) {
@@ -1368,7 +1368,7 @@
           lowConfidence = result.lowConfidence;
           typeLabel = "PDF";
         } else {
-          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${ClaudeFill.isConfigured() ? ", .hwpx, 사진" : ""}만 가능).`, "error");
+          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${AiFill.isEnabled() ? ", .hwpx, 사진" : ""}만 가능).`, "error");
           return;
         }
       }
@@ -1792,7 +1792,7 @@
     const apiKeys = BldReg.getKeys();
     $("#jusoApiKey").value = apiKeys.jusoKey || "";
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
-    $("#claudeApiKey").value = ClaudeFill.getPassword();
+    $("#aiEnabledToggle").checked = AiFill.isEnabled();
     renderDriveStatus();
     $("#authUsername").value = Auth.getUsername();
     $("#authPassword").value = "";
@@ -1815,10 +1815,9 @@
     toast("API 키가 저장되었습니다.");
   });
 
-  $("#btnSaveClaudeKey").addEventListener("click", () => {
-    const password = $("#claudeApiKey").value.trim();
-    ClaudeFill.savePassword(password);
-    toast(ClaudeFill.isConfigured() ? "저장되었습니다. 이제 파일 업로드 시 AI가 자동으로 분석합니다." : "비밀번호가 삭제되었습니다.");
+  $("#aiEnabledToggle").addEventListener("change", (e) => {
+    AiFill.setEnabled(e.target.checked);
+    toast(e.target.checked ? "AI 자동 인식을 켰습니다." : "AI 자동 인식을 껐습니다.");
   });
 
   $("#btnSaveAuth").addEventListener("click", () => {
