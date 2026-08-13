@@ -592,7 +592,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
    표 폭 계산 대신 일반 박스 모델이 적용되는데, 기본값(content-box)에서는 padding+border만큼
    (칸당 약 14px) width:100%보다 넓게 그려져 미세한 가로 스크롤이 계속 생겼었다. */
 @media screen {
-  .official-table, .official-table tr, .official-table td { display: block; width: 100% !important; box-sizing: border-box; }
+  .official-table, .official-table tbody, .official-table tr, .official-table td { display: block; width: 100% !important; box-sizing: border-box; }
   .official-table { margin-bottom: 16px; }
   .official-table td { border: none; border-bottom: 1px solid var(--border); }
   .official-table tr:last-child td { border-bottom: none; }
