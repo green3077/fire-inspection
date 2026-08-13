@@ -1526,7 +1526,7 @@
           </tr>
         </table>
 
-        <table class="official-table">
+        <table class="official-table official-table-spaced">
           <tr>
             <td class="section-label">이행완료<br>사항</td>
             <td class="field-label">이행조치 내용</td>
@@ -1546,18 +1546,19 @@
           <div>${fireStationLine}</div>
         </div>
 
-        <div class="official-form-note">
-          <div class="official-form-note-title">첨부서류</div>
-          <div>1. 이행계획 건별 이행 전ㆍ후 사진 증명자료 1부</div>
-          <div>2. 소방시설공사 계약서(이행조치 내용과 관련됩니다) 1부</div>
-        </div>
-
-        <div class="official-form-note">
-          <div class="official-form-note-title">유의 사항</div>
-          <div>「소방시설 설치 및 관리에 관한 법률」 제61조제1항 제8호 및 제9호</div>
-          <div>1. 특정소방대상물의 관계인이 법 제22조에 따른 소방시설등의 자체점검 결과에 따른 수리ㆍ조치ㆍ정비사항 발생 시 이행계획서를 첨부하지 않거나 거짓으로 제출한 경우 300만원 이하의 과태료를 부과합니다.</div>
-          <div>2. 특정소방대상물의 관계인이 소방시설등의 수리ㆍ조치ㆍ정비 이행계획을 별도의 연기신청 없이 기간 내에 완료하지 않은 경우 300만원 이하의 과태료를 부과합니다.</div>
-        </div>
+        <table class="official-table official-table-spaced">
+          <tr>
+            <td class="field-label">첨부서류</td>
+            <td>1. 이행계획 건별 이행 전ㆍ후 사진 증명자료 1부<br>2. 소방시설공사 계약서(이행조치 내용과 관련됩니다) 1부</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="official-table-bar">유의 사항</td>
+          </tr>
+          <tr>
+            <td class="field-label">「소방시설 설치 및 관리에 관한 법률」 제61조제1항 제8호 및 제9호</td>
+            <td>1. 특정소방대상물의 관계인이 법 제22조에 따른 소방시설등의 자체점검 결과에 따른 수리ㆍ조치ㆍ정비사항 발생 시 이행계획서를 첨부하지 않거나 거짓으로 제출한 경우 300만원 이하의 과태료를 부과합니다.<br>2. 특정소방대상물의 관계인이 소방시설등의 수리ㆍ조치ㆍ정비 이행계획을 별도의 연기신청 없이 기간 내에 완료하지 않은 경우 300만원 이하의 과태료를 부과합니다.</td>
+          </tr>
+        </table>
 
         <div class="official-form-footer">210mm×297mm[백상지(80g/㎡) 또는 중질지(80g/㎡)]</div>
       </div>
