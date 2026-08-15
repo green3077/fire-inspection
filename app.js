@@ -1046,7 +1046,6 @@
       beforePhotoIds: [],
       afterPhotoIds: [],
       resolved: false,
-      resolvedDate: null,
       createdAt: new Date().toISOString()
     };
   }
@@ -1157,7 +1156,7 @@
         </div>
         <div class="deficiency-resolved-row">
           <input type="checkbox" class="def-resolved" data-def="${def.id}" ${def.resolved ? "checked" : ""}>
-          <span>이행완료${def.resolvedDate ? " (" + escapeHtml(def.resolvedDate) + ")" : ""}</span>
+          <span>이행완료</span>
         </div>
         <div class="deficiency-card-actions">
           <button class="btn btn-danger btn-delete-def" data-def="${def.id}">삭제</button>
@@ -1191,8 +1190,7 @@
   async function setDeficiencyResolved(defId, checked) {
     const def = findDeficiency(defId);
     def.resolved = checked;
-    def.resolvedDate = checked ? todayISO() : null;
-    await FireDB.updateDeficiency(def.id, { resolved: def.resolved, resolvedDate: def.resolvedDate });
+    await FireDB.updateDeficiency(def.id, { resolved: def.resolved });
     await renderDeficiencies();
   }
 
@@ -1211,7 +1209,13 @@
       targetArr.push(photo.id);
       backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file);
     }
-    await FireDB.updateDeficiency(def.id, { beforePhotoIds: def.beforePhotoIds, afterPhotoIds: def.afterPhotoIds });
+    const changes = { beforePhotoIds: def.beforePhotoIds, afterPhotoIds: def.afterPhotoIds };
+    // 이행후 사진이 곧 수리 완료의 증거이므로, 한 장이라도 올라오면 이행완료를 자동으로 체크해준다.
+    if (role === "after" && !def.resolved) {
+      def.resolved = true;
+      changes.resolved = true;
+    }
+    await FireDB.updateDeficiency(def.id, changes);
     await renderDeficiencies();
   }
 
@@ -1322,8 +1326,8 @@
     const site = await FireDB.getSite(currentDeficiencySiteId);
     const company = getCompanyProfile();
     const resolved = currentDeficiencies.filter((d) => d.resolved);
-    const dates = resolved.map((d) => d.resolvedDate).filter(Boolean).sort();
-    const dateRange = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`) : ". . . ~ . . .";
+    // 이행조치 일자는 더 이상 자동 기록하지 않고, 실제 제출 시점에 손으로 적도록 항상 공란으로 둔다.
+    const dateRange = ". . . ~ . . .";
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
