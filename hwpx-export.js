@@ -32,23 +32,22 @@ const HwpxExport = (() => {
     const tcs = Array.from(doc.getElementsByTagNameNS(HP, "tc"));
     let count = 0;
     for (const tc of tcs) {
-      const text = Array.from(tc.getElementsByTagNameNS(HP, "t")).map((t) => t.textContent).join("").trim();
-      if (text === labelText) {
+      const ps = tc.getElementsByTagNameNS(HP, "p");
+      // 셀 전체가 아니라 첫 문단(라벨 줄)만 비교한다 - 같은 라벨이 여러 번 나오는 "소재지" 같은 경우,
+      // 앞서 occurrence 0을 처리하며 값 줄을 이어붙이고 나면 셀 전체 텍스트는 더 이상 라벨과 같지 않아서
+      // 이후 occurrence를 셀 전체 텍스트로 찾으면 순서가 어긋난다.
+      const firstPText = ps.length ? Array.from(ps[0].getElementsByTagNameNS(HP, "t")).map((t) => t.textContent).join("").trim() : "";
+      if (firstPText === labelText) {
         if (count === (occurrence || 0)) {
-          const ps = tc.getElementsByTagNameNS(HP, "p");
-          const labelP = ps[ps.length - 1];
+          const labelP = ps[0];
           const newP = labelP.cloneNode(true);
           const t = newP.getElementsByTagNameNS(HP, "t")[0];
           if (t) t.textContent = value;
           const lineseg = newP.getElementsByTagNameNS(HP, "lineseg")[0];
           if (lineseg) lineseg.setAttribute("vertpos", String(1600 * ps.length));
           tc.getElementsByTagNameNS(HP, "subList")[0].appendChild(newP);
-          // 값 줄이 늘어난 만큼 칸 높이도 넉넉하게 키워서 실제 한글에서 텍스트가 잘리지 않도록 한다.
-          const cellSz = tc.getElementsByTagNameNS(HP, "cellSz")[0];
-          if (cellSz) {
-            const h = parseInt(cellSz.getAttribute("height"), 10) || 3009;
-            cellSz.setAttribute("height", String(h + 3009));
-          }
+          // cellSz의 height는 한글이 실제 내용에 맞춰 다시 계산하는 값이라 손대지 않는다 - 예전에 여기서
+          // 미리 높이를 부풀렸더니(+3009) 실제 한글에서 줄 밑에 불필요한 빈 여백이 남는 문제가 있었다.
           return true;
         }
         count++;
@@ -97,9 +96,10 @@ const HwpxExport = (() => {
     appendValueLineInLabelCell(doc, "대상물 구분(용도)", data.siteType || "", 0);
     appendValueLineInLabelCell(doc, "업체명(상호)", data.company.name || "", 0);
     appendValueLineInLabelCell(doc, "사업자번호", data.company.bizRegNo || "", 0);
-    // "소재지"는 라벨 셀 하나가 행 전체(colSpan=4)를 차지하는 구조라 별도 값 칸이 없음 - 라벨 뒤에 이어서 삽입.
-    insertValueAfterLabelRun(doc, "소재지", data.siteAddr, 0);
-    insertValueAfterLabelRun(doc, "소재지", data.company.address || "", 1);
+    // "소재지"도 라벨 셀 하나가 행 전체(colSpan=4)를 차지하는 구조라 별도 값 칸이 없음 - 위 필드들과 마찬가지로
+    // 옆이 아니라 라벨 밑에 새 줄로 값이 오도록 한다.
+    appendValueLineInLabelCell(doc, "소재지", data.siteAddr, 0);
+    appendValueLineInLabelCell(doc, "소재지", data.company.address || "", 1);
 
     // 관계인 / 대표이사 - "(성명:               전화번호:           )" 형태의 한 run 안에 값 삽입 (등장 순서: 관계인 -> 대표이사)
     // 치환 후에도 문자열이 여전히 패턴에 매칭되므로(괄호로 시작, 성명:/전화번호: 포함) occurrence를 0, 1로 명시해야 관계인/대표이사 줄이 서로 안 뒤섞인다.
