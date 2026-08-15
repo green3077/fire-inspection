@@ -197,6 +197,15 @@ body {
 }
 .comp-toggle-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.change-history-entry {
+  border-bottom: 1px solid var(--border);
+  padding: 9px 2px;
+  font-size: 13.5px;
+}
+.change-history-entry:last-child { border-bottom: none; }
+.change-history-date { color: var(--text-dim); font-weight: 700; margin-bottom: 3px; }
+.change-history-summary { color: var(--text); line-height: 1.5; }
+
 .inspection-schedule-badge {
   font-size: 12px;
   font-weight: 700;

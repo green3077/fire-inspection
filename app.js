@@ -641,6 +641,65 @@
     if (editingSiteId) openSiteDetail(editingSiteId); else { renderSites(); showScreen("screen-sites"); }
   });
 
+  // 주소가 같은 현장은 새로 만들지 않고 기존 현장에 합친다 - 공백 차이 정도만 무시하는 단순 정규화 비교.
+  function normalizeAddress(addr) {
+    return (addr || "").replace(/\s+/g, "").trim();
+  }
+
+  const SITE_FIELD_LABELS = {
+    name: "현장명", address: "주소", contactName: "담당자명", contactPhone: "담당자 연락처",
+    fireStation: "관할소방서", station119: "관할119안전센터",
+    buildingType: "건물 용도", area: "연면적", floorInfo: "층수", approvalDate: "사용승인일", structure: "구조",
+    fireManagerName: "소방안전관리자 성명", fireManagerPhone: "소방안전관리자 연락처",
+    fireManagerAppointDate: "선임일자", fireManagerEduDate: "교육일자",
+    engineerName: "담당기사 성명", engineerPhone: "담당기사 연락처",
+    receiverLocation: "수신기 위치", receiverAccess: "수신기 접근방법",
+    pumpRoomLocation: "펌프실 위치", pumpRoomAccess: "펌프실 접근방법",
+    equipmentMemo: "메모", notes: "비고",
+    comprehensiveTarget: "종합점검대상 여부"
+  };
+
+  // 새로 입력/인식된 값 중 실제로 뭔가 채워진 것만 기존 현장 위에 덮어쓴다 - 새 값이 비어 있으면
+  // (예: 이번엔 그 항목이 인식/입력되지 않음) 기존에 저장돼 있던 값을 그대로 유지한다.
+  function mergeSiteData(oldSite, newData) {
+    const merged = { ...oldSite };
+    for (const key of Object.keys(newData)) {
+      const nv = newData[key];
+      if (key === "comprehensiveTarget") {
+        if (typeof nv === "boolean") merged[key] = nv;
+        continue;
+      }
+      if (nv !== undefined && nv !== null && String(nv).trim() !== "") merged[key] = nv;
+    }
+    return merged;
+  }
+
+  function diffSiteFields(oldSite, newSite) {
+    const changes = [];
+    for (const key of Object.keys(SITE_FIELD_LABELS)) {
+      const ov = key === "comprehensiveTarget" ? (typeof oldSite[key] === "boolean" ? String(oldSite[key]) : "") : String(oldSite[key] || "").trim();
+      const nv = key === "comprehensiveTarget" ? (typeof newSite[key] === "boolean" ? String(newSite[key]) : "") : String(newSite[key] || "").trim();
+      // 주소는 공백 차이만 있으면(중복 판정에 쓰는 정규화와 동일 기준) 실질적으로 안 바뀐 것으로 본다.
+      const same = key === "address" ? normalizeAddress(ov) === normalizeAddress(nv) : ov === nv;
+      if (nv && !same) changes.push({ field: key, label: SITE_FIELD_LABELS[key], oldValue: ov, newValue: nv });
+    }
+    return changes;
+  }
+
+  async function saveSiteAttachments(siteId, siteName) {
+    for (const att of pendingAttachments) {
+      await FireDB.addAttachment({
+        siteId,
+        filename: att.filename,
+        size: att.size,
+        blob: att.blob,
+        createdAt: new Date().toISOString()
+      });
+      DriveBackup.uploadToSite(siteName, "첨부파일", att.filename, att.blob).catch(() => {});
+    }
+    pendingAttachments = [];
+  }
+
   $("#btnSaveSite").addEventListener("click", async () => {
     const name = $("#siteName").value.trim();
     if (!name) { toast("현장명을 입력해주세요.", "error"); return; }
@@ -671,22 +730,29 @@
       notes: $("#siteNotes").value.trim()
     };
     if (editingSiteId) {
+      const before = await FireDB.getSite(editingSiteId);
+      const changes = diffSiteFields(before, data);
+      if (changes.length > 0) data.changeHistory = [...(before.changeHistory || []), { date: new Date().toISOString(), changes }];
       await FireDB.updateSite(editingSiteId, data);
       openSiteDetail(editingSiteId);
+      return;
+    }
+    const normAddr = normalizeAddress(data.address);
+    const existing = normAddr ? (await FireDB.getAllSites()).find((s) => normalizeAddress(s.address) === normAddr) : null;
+    if (existing) {
+      const merged = mergeSiteData(existing, data);
+      const changes = diffSiteFields(existing, merged);
+      if (changes.length > 0) merged.changeHistory = [...(existing.changeHistory || []), { date: new Date().toISOString(), changes }];
+      await FireDB.updateSite(existing.id, merged);
+      await saveSiteAttachments(existing.id, merged.name);
+      renderSites();
+      showScreen("screen-sites");
+      openSiteDetail(existing.id);
+      toast("주소가 같은 기존 현장을 찾아 정보를 갱신했습니다.", "success");
     } else {
       data.createdAt = new Date().toISOString();
       const site = await FireDB.addSite(data);
-      for (const att of pendingAttachments) {
-        await FireDB.addAttachment({
-          siteId: site.id,
-          filename: att.filename,
-          size: att.size,
-          blob: att.blob,
-          createdAt: new Date().toISOString()
-        });
-        DriveBackup.uploadToSite(site.name, "첨부파일", att.filename, att.blob).catch(() => {});
-      }
-      pendingAttachments = [];
+      await saveSiteAttachments(site.id, site.name);
       renderSites();
       showScreen("screen-sites");
       openSiteDetail(site.id);
@@ -801,6 +867,15 @@
       ${site.equipmentMemo ? `<div class="report-meta-row"><span class="label">메모</span><span>${escapeHtml(site.equipmentMemo)}</span></div>` : ""}
       ${site.notes ? `<div class="report-meta-row"><span class="label">비고</span><span>${escapeHtml(site.notes)}</span></div>` : ""}
     `;
+    const history = site.changeHistory || [];
+    $("#siteChangeHistorySection").classList.toggle("hidden", history.length === 0);
+    $("#siteChangeHistoryList").innerHTML = history.slice().reverse().map((h) => `
+      <div class="change-history-entry">
+        <div class="change-history-date">${escapeHtml((h.date || "").slice(0, 10))}</div>
+        <div class="change-history-summary">${h.changes.map((c) => `${escapeHtml(c.label)}: ${escapeHtml(c.oldValue || "(없음)")} → ${escapeHtml(c.newValue)}`).join(", ")}</div>
+      </div>
+    `).join("");
+
     const inspections = await FireDB.getInspectionsBySite(id);
     inspections.sort((a, b) => (b.scheduledDate || "").localeCompare(a.scheduledDate || ""));
     const listEl = $("#siteInspectionsList");
