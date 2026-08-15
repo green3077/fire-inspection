@@ -1892,6 +1892,7 @@
 
   function bootApp() {
     $("#categoryList").innerHTML = DEFICIENCY_CATEGORY_SUGGESTIONS.map((c) => `<option value="${escapeHtml(c)}">`).join("");
+    $("#appVersionTag").textContent = typeof APP_VERSION !== "undefined" ? "v" + APP_VERSION : "";
     renderSites();
     showScreen("screen-home");
     renderHomeTodo();
