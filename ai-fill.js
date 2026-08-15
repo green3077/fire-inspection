@@ -176,7 +176,8 @@ const AiFill = (() => {
     area: "연면적 (숫자만, 단위 ㎡ 제외)",
     approvalDate: "건축물 사용승인일, YYYY-MM-DD 형식",
     floorInfo: "층수 정보, 예: 지상 5층 / 지하 1층",
-    buildingType: "건물 용도/구분"
+    buildingType: "건물 용도/구분",
+    sprinklerInstalled: "소화설비 점검표에서 스프링클러설비가 설치되어 있고 점검(대상)으로 체크되어 있으면 \"예\", 스프링클러설비가 없거나 미설치/해당없음으로 표시되어 있으면 \"아니오\", 문서에서 판단할 수 없으면 빈 문자열"
   };
 
   const CLIENT_SCHEMA = {

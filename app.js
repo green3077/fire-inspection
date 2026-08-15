@@ -7,6 +7,7 @@
   let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
   let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
   let sitesSelectedRegion = null; // 지역별 모드에서 드릴다운한 지역 (구/도 이름), null이면 지역 버튼 목록 표시 중
+  let comprehensiveTarget = null; // 현장 등록/수정 폼의 "종합점검대상/해당없음" 토글 상태: true | false | null(미정)
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -128,6 +129,36 @@
       }
     }
     return "";
+  }
+
+  // 사용승인일 문자열에서 월(1~12)만 최대한 관대하게 뽑아낸다 - "YYYY-MM-DD", "YYYYMMDD", "YYYY.M.D",
+  // "2013년 7월" 처럼 자유 입력/자동 인식 결과가 저마다 형식이 다를 수 있어서.
+  function extractApprovalMonth(approvalDate) {
+    const s = (approvalDate || "").trim();
+    if (!s) return null;
+    const m = s.match(/^\d{4}[.\-/](\d{1,2})[.\-/]\d{1,2}/) || s.match(/^\d{4}(\d{2})\d{2}$/) || s.match(/(\d{1,2})\s*월/);
+    if (!m) return null;
+    const month = parseInt(m[1], 10);
+    return month >= 1 && month <= 12 ? month : null;
+  }
+
+  // 종합점검/작동점검 대상월 계산 - site.comprehensiveTarget이 true(스프링클러 등 설치, 종합점검 대상)면
+  // 종합점검은 사용승인월, 작동점검은 그 6개월 뒤. false(해당없음)면 종합점검 없이 작동점검만 사용승인월.
+  // comprehensiveTarget이 아직 정해지지 않았거나(null) 사용승인일을 알 수 없으면 계산할 수 없으므로 null 반환.
+  function computeInspectionMonths(site) {
+    const approvalMonth = extractApprovalMonth(site.approvalDate);
+    if (approvalMonth === null || typeof site.comprehensiveTarget !== "boolean") return null;
+    if (site.comprehensiveTarget) {
+      return { comprehensiveMonth: approvalMonth, operationalMonth: ((approvalMonth - 1 + 6) % 12) + 1 };
+    }
+    return { comprehensiveMonth: null, operationalMonth: approvalMonth };
+  }
+
+  function inspectionScheduleBadgeHtml(site) {
+    const sched = computeInspectionMonths(site);
+    if (!sched) return "";
+    const comp = sched.comprehensiveMonth ? `종합 ${sched.comprehensiveMonth}월` : "종합 해당없음";
+    return `<span class="inspection-schedule-badge">${comp} · 작동 ${sched.operationalMonth}월</span>`;
   }
 
   function showScreen(id) {
@@ -276,7 +307,7 @@
     const last = lastBySite.get(s.id);
     return `
       <div class="list-card" data-id="${s.id}">
-        <div class="list-card-title">${escapeHtml(s.name)}</div>
+        <div class="list-card-title"><span>${escapeHtml(s.name)}</span>${inspectionScheduleBadgeHtml(s)}</div>
         <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}${s.contactName ? " · 담당자: " + escapeHtml(s.contactName) : ""}</div>
         <div class="list-card-sub">${last ? `마지막 점검일: ${escapeHtml(last.completedDate || last.scheduledDate)} · 점검자: ${escapeHtml(last.inspector || "-")}` : "점검 이력 없음"}</div>
         <div class="list-card-sub site-card-phone-row">
@@ -417,18 +448,28 @@
   }
 
   const SITE_FORM_FIELDS = [
-    "siteName", "siteAddress", "siteContactName", "siteContactPhone", "siteFireStation",
+    "siteName", "siteAddress", "siteContactName", "siteContactPhone", "siteFireStation", "siteStation119",
     "siteBuildingType", "siteArea", "siteFloorInfo", "siteApprovalDate", "siteStructure",
     "siteFireManagerName", "siteFireManagerPhone", "siteFireManagerAppointDate", "siteFireManagerEduDate",
     "siteEngineerName", "siteEngineerPhone", "siteNotes",
     "siteReceiverLocation", "siteReceiverAccess", "sitePumpRoomLocation", "sitePumpRoomAccess", "siteEquipmentMemo"
   ];
 
+  // "종합점검대상"/"종합점검 해당없음" 토글 - 이미 선택된 버튼을 다시 누르면 미정(null) 상태로 되돌아간다.
+  function renderComprehensiveToggle(value) {
+    comprehensiveTarget = value;
+    $("#btnCompTargetYes").classList.toggle("active", value === true);
+    $("#btnCompTargetNo").classList.toggle("active", value === false);
+  }
+  $("#btnCompTargetYes").addEventListener("click", () => renderComprehensiveToggle(comprehensiveTarget === true ? null : true));
+  $("#btnCompTargetNo").addEventListener("click", () => renderComprehensiveToggle(comprehensiveTarget === false ? null : false));
+
   function openBlankSiteForm() {
     editingSiteId = null;
     pendingAttachments = [];
     $("#siteFormTitle").textContent = "현장 추가";
     SITE_FORM_FIELDS.forEach((id) => { $("#" + id).value = ""; });
+    renderComprehensiveToggle(null);
     $("#bldRegResult").classList.add("hidden");
     $("#importSummary").classList.add("hidden");
     lastAutoBldRegAddress = "";
@@ -579,6 +620,10 @@
       Object.entries(map).forEach(([field, id]) => {
         if (result.fields[field]) { $("#" + id).value = result.fields[field]; filledCount++; }
       });
+      // 스프링클러설비 체크 여부(AI 분석 전용 - 정규식 폴백 경로에는 이 필드가 없음)로 종합점검대상 토글을 미리 맞춰준다.
+      // 사용자가 내용을 확인하고 필요하면 직접 다시 눌러 바꿀 수 있다.
+      if (result.fields.sprinklerInstalled === "예") renderComprehensiveToggle(true);
+      else if (result.fields.sprinklerInstalled === "아니오") renderComprehensiveToggle(false);
       $("#importSummary").classList.remove("hidden");
       $("#importSummary").textContent = `${result.typeLabel}에서 ${filledCount}개 항목을 자동으로 채웠습니다.${result.lowConfidence ? " 인식 품질이 낮을 수 있으니 내용을 꼭 확인해주세요." : " 내용을 확인 후 저장해주세요."}`;
       toast(`${result.typeLabel}에서 ${filledCount}개 항목을 채웠습니다. 내용을 확인해주세요.`);
@@ -605,6 +650,8 @@
       contactName: $("#siteContactName").value.trim(),
       contactPhone: $("#siteContactPhone").value.trim(),
       fireStation: $("#siteFireStation").value.trim(),
+      station119: $("#siteStation119").value.trim(),
+      comprehensiveTarget,
       buildingType: $("#siteBuildingType").value.trim(),
       area: $("#siteArea").value.trim(),
       floorInfo: $("#siteFloorInfo").value.trim(),
@@ -734,6 +781,8 @@
     $("#siteDetailInfo").innerHTML = `
       <h2>${escapeHtml(site.name)}</h2>
       <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site.address || "-")}</span></div>
+      <div class="report-meta-row"><span class="label">관할소방서</span><span>${escapeHtml(site.fireStation || "-")}</span></div>
+      <div class="report-meta-row"><span class="label">관할119안전센터</span><span>${escapeHtml(site.station119 || "-")}</span></div>
       <div class="report-meta-row"><span class="label">담당자</span><span>${escapeHtml(site.contactName || "-")}</span></div>
       <div class="report-meta-row"><span class="label">연락처</span><span>${escapeHtml(site.contactPhone ? formatPhone(site.contactPhone) : "-")}</span></div>
       <div class="report-meta-row"><span class="label">건물 용도</span><span>${escapeHtml(site.buildingType || "-")}</span></div>
@@ -774,6 +823,8 @@
     $("#siteContactName").value = site.contactName || "";
     $("#siteContactPhone").value = site.contactPhone || "";
     autoSuggestFireStation(site.address || "");
+    $("#siteStation119").value = site.station119 || "";
+    renderComprehensiveToggle(typeof site.comprehensiveTarget === "boolean" ? site.comprehensiveTarget : null);
     $("#siteBuildingType").value = site.buildingType || "";
     $("#siteArea").value = site.area || "";
     $("#siteFloorInfo").value = site.floorInfo || "";

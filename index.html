@@ -167,13 +167,22 @@
   <!-- 현장 등록/수정 -->
   <section id="screen-site-form" class="screen">
     <div class="card">
-      <h2 id="siteFormTitle">현장 추가</h2>
+      <div class="site-form-title-row">
+        <h2 id="siteFormTitle">현장 추가</h2>
+        <div class="comprehensive-toggle">
+          <button type="button" class="comp-toggle-btn" id="btnCompTargetYes">종합점검대상</button>
+          <button type="button" class="comp-toggle-btn" id="btnCompTargetNo">종합점검 해당없음</button>
+        </div>
+      </div>
       <div id="importSummary" class="hint-text hidden"></div>
       <div class="field"><span>현장명(거래처명) *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
       <div class="field"><span>주소</span><input type="text" id="siteAddress" placeholder="예: 서울시 강남구 ..."></div>
       <button class="btn btn-secondary" id="btnLookupBldReg" type="button">🏢 건축물대장 조회</button>
       <div id="bldRegResult" class="bldreg-result hidden"></div>
-      <div class="field"><span>관할소방서 (관할119안전센터)</span><input type="text" id="siteFireStation" placeholder="주소 입력 시 자동으로 표시됩니다" readonly></div>
+      <div class="field-row">
+        <div class="field"><span>관할소방서 (관할119안전센터)</span><input type="text" id="siteFireStation" placeholder="건축물대장 조회시 입력됩니다" readonly></div>
+        <div class="field"><span>관할119안전센터</span><input type="text" id="siteStation119" placeholder="직접 입력해주세요"></div>
+      </div>
       <div class="field-row">
         <div class="field"><span>담당자명</span><input type="text" id="siteContactName"></div>
         <div class="field"><span>담당자 연락처</span><input type="text" id="siteContactPhone" placeholder="010-0000-0000"></div>
