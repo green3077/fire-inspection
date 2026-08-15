@@ -46,6 +46,16 @@
   </div>
 </div>
 
+<div id="photoViewerModal" class="photo-viewer-overlay hidden no-print">
+  <button class="photo-viewer-close" id="btnClosePhotoViewer" type="button">×</button>
+  <button class="photo-viewer-nav photo-viewer-prev" id="btnPhotoViewerPrev" type="button">‹</button>
+  <img id="photoViewerImg" class="photo-viewer-img" alt="">
+  <button class="photo-viewer-nav photo-viewer-next" id="btnPhotoViewerNext" type="button">›</button>
+  <div class="photo-viewer-actions">
+    <button class="btn btn-danger hidden" id="btnDeleteViewerPhoto" type="button">삭제</button>
+  </div>
+</div>
+
 <div id="app">
 
   <!-- 홈 (첫 화면) -->
@@ -216,8 +226,9 @@
   <!-- 현장 상세 -->
   <section id="screen-site-detail" class="screen">
     <div class="card" id="siteDetailInfo"></div>
-    <div class="section-actions">
-      <button class="btn btn-primary" id="btnScheduleFromSite">📋 점검 시작 / 이어서 하기</button>
+    <div class="section-actions site-gallery-actions">
+      <button class="btn btn-primary" id="btnOpenSiteGallery">📷 현장점검 사진</button>
+      <button class="btn btn-secondary" id="btnOpenDeficiencyGallery">🔧 지적사항 사진</button>
     </div>
     <h2 class="list-heading">점검 이력</h2>
     <div id="siteInspectionsList"></div>
@@ -228,30 +239,21 @@
     <button class="btn btn-secondary" id="btnBackToSites">← 목록으로</button>
   </section>
 
-  <!-- 체크리스트 진행 -->
-  <section id="screen-checklist" class="screen">
-    <div class="card" id="checklistHeader"></div>
-    <div id="checklistBody"></div>
-    <div class="field">
-      <span>총평 / 종합 소견</span>
-      <textarea id="inspOverallNote" rows="3"></textarea>
+  <!-- 사진 갤러리 (현장점검 사진 / 지적사항 사진 공용) -->
+  <section id="screen-photo-gallery" class="screen">
+    <div class="card">
+      <h2 id="galleryTitle"></h2>
+      <div class="hint-text" id="galleryHint"></div>
     </div>
-    <button class="btn btn-primary btn-large" id="btnCompleteInspection">점검 완료 처리</button>
-    <button class="btn btn-secondary" id="btnGoToDeficiencies">🔧 지적사항 / 이행완료 관리</button>
-    <button class="btn btn-secondary" id="btnViewSiteInfo">🏢 현장 정보 / 점검 이력</button>
-    <button class="btn btn-secondary" id="btnSaveChecklistDraft">임시 저장</button>
-    <button class="btn btn-secondary" id="btnBackFromChecklist">← 목록으로</button>
-  </section>
-
-  <!-- 보고서 -->
-  <section id="screen-report" class="screen">
-    <div class="report-toolbar no-print">
-      <button class="btn btn-secondary" id="btnBackFromReport">← 목록으로</button>
-      <button class="btn btn-primary" id="btnPrintReport">인쇄 / PDF 저장</button>
-      <button class="btn btn-secondary" id="btnShareReport">공유</button>
+    <div class="gallery-toolbar">
+      <button class="btn btn-secondary" id="btnGalleryUpload">＋ 사진 추가</button>
+      <input type="file" id="galleryUploadInput" accept="image/*" multiple class="hidden">
+      <button class="btn btn-secondary" id="btnGallerySelectAll">전체 선택</button>
+      <button class="btn btn-primary" id="btnGalleryShare" disabled>선택한 사진 공유</button>
     </div>
-    <button class="btn btn-secondary no-print" id="btnGoToDeficienciesFromReport">🔧 지적사항 / 이행완료 관리</button>
-    <div id="reportContent"></div>
+    <div id="galleryGrid" class="gallery-grid"></div>
+    <button class="btn btn-primary btn-large" id="btnCompleteSiteVisit">✅ 방문 완료 처리</button>
+    <button class="btn btn-secondary" id="btnBackFromGallery">← 목록으로</button>
   </section>
 
   <!-- 지적사항 전체 관리 (업체별) -->
@@ -374,7 +376,6 @@
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <script src="auth.js"></script>
 <script src="db.js"></script>
-<script src="checklist-data.js"></script>
 <script src="ui.js"></script>
 <script src="import.js"></script>
 <script src="client-import.js"></script>

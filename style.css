@@ -307,6 +307,7 @@ textarea { resize: vertical; }
 }
 .list-card-title { font-weight: 800; font-size: 17.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .list-card-sub { font-size: 14.5px; color: var(--text-dim); margin-top: 5px; }
+.list-card-static { cursor: default; }
 
 .attachment-row { cursor: default; }
 .attachment-row .list-card-title a { color: var(--accent-dark); word-break: break-all; }
@@ -323,45 +324,6 @@ textarea { resize: vertical; }
 .badge-overdue { background: var(--danger-bg); color: var(--danger); }
 .badge-completed { background: var(--good-bg); color: var(--good); }
 
-/* 체크리스트 */
-.checklist-group-title {
-  font-size: 16.5px;
-  color: var(--accent-dark);
-  margin: 22px 4px 10px;
-  font-weight: 800;
-}
-.checklist-item {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-.checklist-item-name { font-size: 16px; font-weight: 600; margin-bottom: 12px; line-height: 1.5; }
-.result-options { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.result-btn {
-  flex: 1;
-  min-width: 68px;
-  padding: 12px 4px;
-  border-radius: 10px;
-  border: 2px solid var(--border);
-  background: #fff;
-  color: var(--text-dim);
-  font-size: 15px;
-  cursor: pointer;
-  font-weight: 700;
-}
-.result-btn.sel-양호 { background: var(--good); border-color: var(--good); color: #fff; }
-.result-btn.sel-불량 { background: var(--danger); border-color: var(--danger); color: #fff; }
-.result-btn.sel-조치필요 { background: var(--warn); border-color: var(--warn); color: #fff; }
-.result-btn.sel-해당없음 { background: #6b7280; border-color: #6b7280; color: #fff; }
-
-.item-note {
-  width: 100%;
-  margin-top: 8px;
-  font-size: 15px;
-}
 .photo-thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .photo-thumb-wrap { position: relative; width: 68px; height: 68px; }
 .photo-thumb { width: 68px; height: 68px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
@@ -386,27 +348,57 @@ textarea { resize: vertical; }
 }
 .photo-file-input, .deficiency-photo-input { display: none; }
 
-/* 보고서 */
+/* 보고서 (이행완료보고서, 현장 상세 정보 카드에서도 재사용) */
 .report-toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
 .report-toolbar .btn { margin-top: 0; }
-.report-header { text-align: center; margin-bottom: 20px; }
-.report-header h2 { margin: 0 0 8px; font-size: 21px; color: var(--accent-dark); }
-.report-header .sub { color: var(--text-dim); font-size: 15px; }
 .report-meta { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .report-meta-row { display: flex; justify-content: space-between; padding: 7px 0; font-size: 15px; border-bottom: 1px solid var(--border); gap: 10px; }
 .report-meta-row:last-child { border-bottom: none; }
 .report-meta-row .label { color: var(--text-dim); flex-shrink: 0; }
 /* 값 칸(마지막 span)이 길면(예: 건물용도) 잘리거나 카드 밖으로 넘치지 않고 줄바꿈되도록 */
 .report-meta-row > span:last-child { flex: 1; min-width: 0; text-align: right; word-break: keep-all; overflow-wrap: break-word; }
-.report-group { margin-bottom: 18px; }
-.report-group h3 { font-size: 16.5px; color: var(--accent-dark); margin: 0 0 10px; font-weight: 800; }
-.report-item { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 15px; }
-.report-item:last-child { border-bottom: none; }
-.report-item-top { display: flex; justify-content: space-between; gap: 8px; }
 .report-item-note { color: var(--text-dim); margin-top: 5px; }
-.report-item-photos { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.report-item-photos img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; }
-.report-overall { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 12px; white-space: pre-wrap; font-size: 15px; }
+
+/* 사진 갤러리 (현장점검 사진 / 지적사항 사진 공용) */
+.site-gallery-actions { display: flex; gap: 10px; }
+.site-gallery-actions .btn { margin-top: 0; }
+.gallery-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.gallery-toolbar .btn { margin-top: 0; flex: 1 1 auto; min-width: 120px; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.gallery-thumb-wrap { position: relative; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.gallery-thumb { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+.gallery-thumb-check {
+  position: absolute; top: 6px; left: 6px; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,0,0,0.45); border: 2px solid #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 15px; font-weight: 800; cursor: pointer;
+}
+.gallery-thumb-wrap.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+.gallery-thumb-wrap.selected .gallery-thumb-check { background: var(--accent); }
+
+/* 사진 원본 보기 */
+.photo-viewer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.92);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 260; /* .modal-overlay(300)보다 낮게 - 뷰어 안에서 뜨는 삭제 확인창이 뒤에 가려지지 않도록 */
+  padding: 20px;
+}
+.photo-viewer-img { max-width: 100%; max-height: 76vh; object-fit: contain; border-radius: 4px; }
+.photo-viewer-close {
+  position: absolute; top: 16px; right: 16px;
+  background: none; border: none; color: #fff; font-size: 34px; line-height: 1; cursor: pointer;
+}
+.photo-viewer-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(255,255,255,0.15); border: none; color: #fff;
+  font-size: 32px; width: 48px; height: 64px; border-radius: 8px; cursor: pointer;
+}
+.photo-viewer-nav:disabled { opacity: 0.25; cursor: default; }
+.photo-viewer-prev { left: 10px; }
+.photo-viewer-next { right: 10px; }
+.photo-viewer-actions { margin-top: 18px; }
+.photo-viewer-actions .btn { width: auto; padding: 10px 24px; margin-top: 0; }
 
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
   outline: 3px solid var(--accent);
@@ -592,8 +584,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   #app { max-width: 100%; }
   #completionReportContent { overflow-x: visible; }
   .official-form { min-width: 0; max-width: 100%; }
-  .report-meta, .checklist-item, .report-overall { background: #fff; border-color: #ccc; }
-  .report-item { color: #000; }
+  .report-meta { background: #fff; border-color: #ccc; }
   .report-item-note { color: #444; }
   .label { color: #444; }
   .completion-table th, .completion-table td { border-color: #000; color: #000; }

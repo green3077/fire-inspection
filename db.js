@@ -135,6 +135,12 @@ const FireDB = (() => {
       for (const att of atts) {
         await remove(STORES.attachments, att.id);
       }
+      // 현장점검 사진 갤러리 사진은 inspectionId 없이 siteId로만 귀속되므로 별도로 정리해야 한다
+      // (지적사항 사진은 deleteDeficiency가 이미 개별 id로 지웠으므로 여기선 중복 삭제라도 무해함).
+      const sitePhotos = await getAllByIndex(STORES.photos, "siteId", id);
+      for (const p of sitePhotos) {
+        await remove(STORES.photos, p.id);
+      }
       return remove(STORES.sites, id);
     },
     getSite: (id) => get(STORES.sites, id),

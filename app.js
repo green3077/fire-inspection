@@ -3,7 +3,6 @@
   let editingSiteId = null;
   let currentSiteId = null;      // 현장 상세 화면에서 보고 있는 현장
   let currentConstructionSiteId = null;  // 공사팀에서 보고 있는 업체(=현장)
-  let currentInspection = null;  // 체크리스트/보고서/지적사항 화면에서 다루는 점검(메모리 상 사본)
   let activeObjectUrls = [];
   let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
   let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
@@ -149,8 +148,7 @@
     "screen-site-entry-choice": "btnCancelEntryChoice",
     "screen-site-form": "btnCancelSiteForm",
     "screen-site-detail": "btnBackToSites",
-    "screen-checklist": "btnBackFromChecklist",
-    "screen-report": "btnBackFromReport",
+    "screen-photo-gallery": "btnBackFromGallery",
     "screen-deficiencies": "btnBackFromDeficiencies",
     "screen-completion-report": "btnBackFromCompletionReport"
   };
@@ -192,7 +190,7 @@
       `;
     }).join("");
     $$("#homeTodoList .home-todo-item").forEach((el) => {
-      el.addEventListener("click", () => openSiteChecklist(el.dataset.siteId));
+      el.addEventListener("click", () => openSiteDetail(el.dataset.siteId));
     });
   }
 
@@ -290,7 +288,7 @@
   }
   function bindSiteCardClicks(container) {
     Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
-      el.addEventListener("click", () => openSiteChecklist(el.dataset.id));
+      el.addEventListener("click", () => openSiteDetail(el.dataset.id));
       const callBtn = el.querySelector(".btn-call");
       if (callBtn) callBtn.addEventListener("click", (e) => e.stopPropagation());
     });
@@ -399,6 +397,8 @@
     renderSites();
   });
 
+  // 방문 예약/이력(일정관리, 오늘의 할일, 마지막 점검일) 트리거 - 예전엔 체크리스트를 여는 것 자체가 트리거였으나
+  // 체크리스트가 사진 갤러리로 대체되면서, 이제 "현장점검 사진" 갤러리를 여는 것이 같은 역할을 한다.
   async function getOrCreateActiveInspection(siteId) {
     const inspections = await FireDB.getInspectionsBySite(siteId);
     const inProgress = inspections.filter((i) => i.status !== "completed");
@@ -411,17 +411,9 @@
       inspector: "",
       status: "scheduled",
       completedDate: null,
-      overallNote: "",
-      checklist: buildChecklistItems(),
       createdAt: new Date().toISOString()
     };
     return FireDB.addInspection(insp);
-  }
-
-  async function openSiteChecklist(siteId) {
-    currentSiteId = siteId;
-    const insp = await getOrCreateActiveInspection(siteId);
-    await openInspection(insp.id);
   }
 
   const SITE_FORM_FIELDS = [
@@ -764,7 +756,6 @@
       listEl.innerHTML = `<div class="empty-state">점검 이력이 없습니다.</div>`;
     } else {
       listEl.innerHTML = inspections.map((i) => inspectionCardHtml(i, site)).join("");
-      bindInspectionCardClicks(listEl);
     }
     showScreen("screen-site-detail");
   }
@@ -812,11 +803,10 @@
     showScreen("screen-sites");
   });
 
-  $("#btnScheduleFromSite").addEventListener("click", async () => {
-    await openSiteChecklist(currentSiteId);
-  });
+  $("#btnOpenSiteGallery").addEventListener("click", () => openPhotoGallery(currentSiteId, "site"));
+  $("#btnOpenDeficiencyGallery").addEventListener("click", () => openPhotoGallery(currentSiteId, "deficiency"));
 
-  // ================= 점검 목록 =================
+  // ================= 점검 목록 (일정관리 표시용 방문 이력 - 조회 전용) =================
   function computeStatus(insp) {
     if (insp.status === "completed") return "completed";
     if (insp.scheduledDate && insp.scheduledDate < todayISO()) return "overdue";
@@ -828,7 +818,7 @@
   function inspectionCardHtml(insp, site) {
     const st = computeStatus(insp);
     return `
-      <div class="list-card" data-id="${insp.id}">
+      <div class="list-card list-card-static">
         <div class="list-card-title">
           <span>${escapeHtml(site ? site.name : "")}</span>
           <span class="badge badge-${st}">${STATUS_LABEL[st]}</span>
@@ -839,264 +829,198 @@
     `;
   }
 
-  function bindInspectionCardClicks(container) {
-    Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
-      el.addEventListener("click", () => openInspection(el.dataset.id));
-    });
+  // ================= 사진 갤러리 (현장점검 사진 / 지적사항 사진 공용) =================
+  // 현장점검 사진: siteId로만 귀속되는 photos 레코드(itemId를 이 상수로 표시) - 지적사항과 마찬가지로 점검 기록과 무관.
+  // 지적사항 사진: 기존 지적사항 이행전/이행후 개별 업로드(itemId=지적사항 id)를 한곳에 모아 보여주기만 하는 조회 전용 화면.
+  const SITE_GALLERY_ITEM_ID = "site-gallery";
+  let galleryMode = null;              // "site" | "deficiency"
+  let galleryActiveInspectionId = null; // "site" 모드에서 방문 완료 처리 대상 점검 id
+  let galleryPhotos = [];              // [{id, blob, createdAt, ...}]
+  let gallerySelected = new Set();
+  let galleryViewerIndex = -1;
+
+  async function openPhotoGallery(siteId, mode) {
+    currentSiteId = siteId;
+    galleryMode = mode;
+    galleryActiveInspectionId = null;
+    gallerySelected = new Set();
+    if (mode === "site") {
+      const insp = await getOrCreateActiveInspection(siteId);
+      galleryActiveInspectionId = insp.id;
+    }
+    const site = await FireDB.getSite(siteId);
+    $("#galleryTitle").textContent = `${site ? site.name : ""} · ${mode === "site" ? "현장점검 사진" : "지적사항 사진"}`;
+    $("#galleryHint").textContent = mode === "site"
+      ? "현장 사진을 여러 장 올릴 수 있습니다. 사진을 누르면 원본이 크게 보이고, 선택해서 외부로 공유할 수 있습니다."
+      : "지적사항에 등록된 이행전/이행후 사진을 한곳에 모아 봅니다. 선택해서 외부로 공유할 수 있습니다.";
+    $("#btnGalleryUpload").classList.toggle("hidden", mode !== "site");
+    $("#btnCompleteSiteVisit").classList.toggle("hidden", mode !== "site");
+    await loadGalleryPhotos();
+    showScreen("screen-photo-gallery");
   }
 
-  // ================= 체크리스트 =================
-  async function openInspection(id) {
-    const insp = await FireDB.getInspection(id);
-    if (!insp) { renderSites(); showScreen("screen-sites"); return; }
-    if (insp.status === "completed") {
-      openReport(id);
-      return;
+  async function loadGalleryPhotos() {
+    const all = await FireDB.getPhotosBySite(currentSiteId);
+    galleryPhotos = all
+      .filter((p) => (galleryMode === "site") === (p.itemId === SITE_GALLERY_ITEM_ID))
+      .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    gallerySelected = new Set(Array.from(gallerySelected).filter((id) => galleryPhotos.some((p) => p.id === id)));
+    renderGalleryGrid();
+  }
+
+  function renderGalleryGrid() {
+    revokeObjectUrls();
+    const grid = $("#galleryGrid");
+    if (galleryPhotos.length === 0) {
+      grid.innerHTML = `<div class="empty-state">등록된 사진이 없습니다.</div>`;
+    } else {
+      grid.innerHTML = galleryPhotos.map((p) => {
+        const url = URL.createObjectURL(p.blob);
+        activeObjectUrls.push(url);
+        const selected = gallerySelected.has(p.id);
+        return `
+          <div class="gallery-thumb-wrap ${selected ? "selected" : ""}" data-id="${p.id}">
+            <img class="gallery-thumb" src="${url}">
+            <span class="gallery-thumb-check" data-id="${p.id}">${selected ? "✓" : ""}</span>
+          </div>
+        `;
+      }).join("");
     }
-    currentInspection = insp;
-    const site = await FireDB.getSite(insp.siteId);
-    $("#checklistHeader").innerHTML = `
-      <h2>${escapeHtml(site ? site.name : "")}</h2>
-      <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site ? site.address || "-" : "-")}</span></div>
-      <div class="field-row">
-        <div class="field">
-          <span>점검 종류</span>
-          <select class="insp-field" data-field="type">
-            <option value="작동점검" ${insp.type === "작동점검" ? "selected" : ""}>작동점검</option>
-            <option value="종합점검" ${insp.type === "종합점검" ? "selected" : ""}>종합점검</option>
-          </select>
-        </div>
-        <div class="field"><span>점검일</span><input type="date" class="insp-field" data-field="scheduledDate" value="${escapeHtml(insp.scheduledDate || "")}"></div>
-      </div>
-      <div class="field"><span>점검자</span><input type="text" class="insp-field" data-field="inspector" placeholder="예: 홍길동" value="${escapeHtml(insp.inspector || "")}"></div>
-    `;
-    $$("#checklistHeader .insp-field").forEach((el) => {
-      el.addEventListener("change", async () => {
-        currentInspection[el.dataset.field] = el.value;
-        await persistCurrentInspection();
+    $$("#galleryGrid .gallery-thumb").forEach((img) => {
+      img.addEventListener("click", () => openPhotoViewer(img.closest(".gallery-thumb-wrap").dataset.id));
+    });
+    $$("#galleryGrid .gallery-thumb-check").forEach((chk) => {
+      chk.addEventListener("click", (e) => { e.stopPropagation(); toggleGallerySelect(chk.dataset.id); });
+    });
+    updateGalleryToolbar();
+  }
+
+  function toggleGallerySelect(id) {
+    if (gallerySelected.has(id)) gallerySelected.delete(id); else gallerySelected.add(id);
+    renderGalleryGrid();
+  }
+
+  function updateGalleryToolbar() {
+    const allSelected = galleryPhotos.length > 0 && gallerySelected.size === galleryPhotos.length;
+    $("#btnGallerySelectAll").textContent = allSelected ? "선택 해제" : "전체 선택";
+    $("#btnGallerySelectAll").disabled = galleryPhotos.length === 0;
+    $("#btnGalleryShare").disabled = gallerySelected.size === 0;
+    $("#btnGalleryShare").textContent = gallerySelected.size > 0 ? `선택한 사진 공유 (${gallerySelected.size})` : "선택한 사진 공유";
+  }
+
+  $("#btnGallerySelectAll").addEventListener("click", () => {
+    gallerySelected = gallerySelected.size === galleryPhotos.length ? new Set() : new Set(galleryPhotos.map((p) => p.id));
+    renderGalleryGrid();
+  });
+
+  $("#btnGalleryUpload").addEventListener("click", () => $("#galleryUploadInput").click());
+
+  $("#galleryUploadInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    for (const file of files) {
+      const photo = await FireDB.addPhoto({
+        siteId: currentSiteId,
+        itemId: SITE_GALLERY_ITEM_ID,
+        blob: file,
+        createdAt: new Date().toISOString()
       });
-    });
-    $("#inspOverallNote").value = insp.overallNote || "";
-    await renderChecklistBody();
-    showScreen("screen-checklist");
+      backupToDrive(currentSiteId, "현장점검_사진", `${photo.id}.jpg`, file);
+    }
+    await loadGalleryPhotos();
+    toast(`${files.length}장의 사진을 추가했습니다.`, "success");
+  });
+
+  function galleryPhotoFilename(p, idx) {
+    const ext = p.blob.type && p.blob.type.includes("png") ? "png" : "jpg";
+    return `사진${idx + 1}_${(p.createdAt || "").slice(0, 10)}.${ext}`;
   }
 
-  async function renderChecklistBody() {
-    revokeObjectUrls();
-    const insp = currentInspection;
-    const groups = {};
-    insp.checklist.forEach((item) => {
-      (groups[item.category] = groups[item.category] || []).push(item);
-    });
-
-    const photos = await FireDB.getPhotosByInspection(insp.id);
-    const photoMap = new Map(photos.map((p) => [p.id, p]));
-
-    let html = "";
-    for (const category of Object.keys(groups)) {
-      html += `<div class="checklist-group-title">${escapeHtml(category)}</div>`;
-      for (const item of groups[category]) {
-        const thumbs = item.photoIds.map((pid) => {
-          const p = photoMap.get(pid);
-          if (!p) return "";
-          const url = URL.createObjectURL(p.blob);
-          activeObjectUrls.push(url);
-          return `<div class="photo-thumb-wrap">
-            <img class="photo-thumb" src="${url}">
-            <button class="photo-thumb-remove" data-item="${item.id}" data-photo="${pid}">×</button>
-          </div>`;
-        }).join("");
-        html += `
-          <div class="checklist-item" data-item="${item.id}">
-            <div class="checklist-item-name">${escapeHtml(item.name)}</div>
-            <div class="result-options">
-              ${RESULT_OPTIONS.map((opt) => `<button class="result-btn ${item.result === opt ? "sel-" + opt : ""}" data-item="${item.id}" data-result="${opt}">${opt}</button>`).join("")}
-            </div>
-            <textarea class="item-note" data-item="${item.id}" rows="1" placeholder="비고 입력">${escapeHtml(item.note || "")}</textarea>
-            <div class="photo-thumbs">
-              ${thumbs}
-              <label class="btn-add-photo-label">＋
-                <input type="file" accept="image/*" capture="environment" class="photo-file-input" data-item="${item.id}">
-              </label>
-            </div>
-          </div>
-        `;
+  async function shareOrDownloadFiles(files, title) {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title });
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return;
       }
     }
-    $("#checklistBody").innerHTML = html;
-
-    $$("#checklistBody .result-btn").forEach((btn) => {
-      btn.addEventListener("click", () => setItemResult(btn.dataset.item, btn.dataset.result));
-    });
-    $$("#checklistBody .item-note").forEach((ta) => {
-      ta.addEventListener("change", () => setItemNote(ta.dataset.item, ta.value));
-    });
-    $$("#checklistBody .photo-file-input").forEach((input) => {
-      input.addEventListener("change", (e) => onChecklistPhotoSelected(input.dataset.item, e.target.files[0]));
-    });
-    $$("#checklistBody .photo-thumb-remove").forEach((btn) => {
-      btn.addEventListener("click", () => removeItemPhoto(btn.dataset.item, btn.dataset.photo));
-    });
+    for (const file of files) {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+    toast(`${files.length}장의 사진이 다운로드되었습니다. 원하는 방법으로 공유해주세요.`, "success");
   }
 
-  function findItem(itemId) {
-    return currentInspection.checklist.find((i) => i.id === itemId);
+  $("#btnGalleryShare").addEventListener("click", async () => {
+    const selectedPhotos = galleryPhotos.filter((p) => gallerySelected.has(p.id));
+    if (selectedPhotos.length === 0) return;
+    const files = selectedPhotos.map((p, i) => new File([p.blob], galleryPhotoFilename(p, i), { type: p.blob.type || "image/jpeg" }));
+    await shareOrDownloadFiles(files, galleryMode === "site" ? "현장점검 사진" : "지적사항 사진");
+  });
+
+  function openPhotoViewer(photoId) {
+    galleryViewerIndex = galleryPhotos.findIndex((p) => p.id === photoId);
+    if (galleryViewerIndex === -1) return;
+    renderPhotoViewer();
+    $("#photoViewerModal").classList.remove("hidden");
   }
 
-  async function persistCurrentInspection() {
-    await FireDB.updateInspection(currentInspection.id, {
-      type: currentInspection.type,
-      scheduledDate: currentInspection.scheduledDate,
-      inspector: currentInspection.inspector,
-      checklist: currentInspection.checklist,
-      overallNote: currentInspection.overallNote
-    });
+  function renderPhotoViewer() {
+    const p = galleryPhotos[galleryViewerIndex];
+    if (!p) { closePhotoViewer(); return; }
+    const url = URL.createObjectURL(p.blob);
+    activeObjectUrls.push(url);
+    $("#photoViewerImg").src = url;
+    $("#btnPhotoViewerPrev").disabled = galleryViewerIndex <= 0;
+    $("#btnPhotoViewerNext").disabled = galleryViewerIndex >= galleryPhotos.length - 1;
+    $("#btnDeleteViewerPhoto").classList.toggle("hidden", galleryMode !== "site");
   }
 
-  async function setItemResult(itemId, result) {
-    const item = findItem(itemId);
-    item.result = item.result === result ? "" : result;
-    await persistCurrentInspection();
-    await renderChecklistBody();
+  function closePhotoViewer() {
+    $("#photoViewerModal").classList.add("hidden");
+    galleryViewerIndex = -1;
   }
 
-  async function setItemNote(itemId, note) {
-    const item = findItem(itemId);
-    item.note = note;
-    await persistCurrentInspection();
-  }
+  $("#btnClosePhotoViewer").addEventListener("click", closePhotoViewer);
+  $("#photoViewerModal").addEventListener("click", (e) => {
+    if (e.target.id === "photoViewerModal") closePhotoViewer();
+  });
+  $("#btnPhotoViewerPrev").addEventListener("click", () => {
+    if (galleryViewerIndex > 0) { galleryViewerIndex--; renderPhotoViewer(); }
+  });
+  $("#btnPhotoViewerNext").addEventListener("click", () => {
+    if (galleryViewerIndex < galleryPhotos.length - 1) { galleryViewerIndex++; renderPhotoViewer(); }
+  });
+  $("#btnDeleteViewerPhoto").addEventListener("click", async () => {
+    const p = galleryPhotos[galleryViewerIndex];
+    if (!p) return;
+    const ok = await confirmDialog("이 사진을 삭제할까요?");
+    if (!ok) return;
+    await FireDB.deletePhoto(p.id);
+    gallerySelected.delete(p.id);
+    closePhotoViewer();
+    await loadGalleryPhotos();
+  });
 
-  async function onChecklistPhotoSelected(itemId, file) {
-    if (!file) return;
-    const item = findItem(itemId);
-    const photo = await FireDB.addPhoto({
-      inspectionId: currentInspection.id,
-      itemId: item.id,
-      blob: file,
-      createdAt: new Date().toISOString()
-    });
-    item.photoIds.push(photo.id);
-    await persistCurrentInspection();
-    await renderChecklistBody();
-    backupToDrive(currentInspection.siteId, "체크리스트_사진", `${item.name || item.id}_${photo.id}.jpg`, file);
-  }
+  $("#btnCompleteSiteVisit").addEventListener("click", async () => {
+    const ok = await confirmDialog("오늘 방문을 완료 처리할까요? (마지막 점검일이 갱신됩니다)");
+    if (!ok || !galleryActiveInspectionId) return;
+    await FireDB.updateInspection(galleryActiveInspectionId, { status: "completed", completedDate: todayISO() });
+    toast("방문이 완료 처리되었습니다.", "success");
+  });
 
-  async function removeItemPhoto(itemId, photoId) {
-    const item = findItem(itemId);
-    item.photoIds = item.photoIds.filter((id) => id !== photoId);
-    await FireDB.deletePhoto(photoId);
-    await persistCurrentInspection();
-    await renderChecklistBody();
-  }
-
-  $("#btnSaveChecklistDraft").addEventListener("click", async () => {
-    currentInspection.overallNote = $("#inspOverallNote").value;
-    await persistCurrentInspection();
+  $("#btnBackFromGallery").addEventListener("click", () => {
+    closePhotoViewer();
     if (currentSiteId) openSiteDetail(currentSiteId);
     else { renderSites(); showScreen("screen-sites"); }
-  });
-
-  $("#btnBackFromChecklist").addEventListener("click", async () => {
-    currentInspection.overallNote = $("#inspOverallNote").value;
-    await persistCurrentInspection();
-    if (currentSiteId) openSiteDetail(currentSiteId);
-    else { renderSites(); showScreen("screen-sites"); }
-  });
-
-  $("#btnViewSiteInfo").addEventListener("click", async () => {
-    currentInspection.overallNote = $("#inspOverallNote").value;
-    await persistCurrentInspection();
-    await openSiteDetail(currentInspection.siteId);
-  });
-
-  $("#btnCompleteInspection").addEventListener("click", async () => {
-    currentInspection.overallNote = $("#inspOverallNote").value;
-    const missing = currentInspection.checklist.filter((i) => !i.result).length;
-    if (missing > 0) {
-      const ok = await confirmDialog(`${missing}개 항목이 미입력 상태입니다. 그래도 점검을 완료 처리할까요?`);
-      if (!ok) return;
-    }
-    await FireDB.updateInspection(currentInspection.id, {
-      checklist: currentInspection.checklist,
-      overallNote: currentInspection.overallNote,
-      status: "completed",
-      completedDate: todayISO()
-    });
-    openReport(currentInspection.id);
-  });
-
-  // ================= 보고서 =================
-  async function openReport(id) {
-    revokeObjectUrls();
-    const insp = await FireDB.getInspection(id);
-    const site = await FireDB.getSite(insp.siteId);
-    const photos = await FireDB.getPhotosByInspection(id);
-    const photoMap = new Map(photos.map((p) => [p.id, p]));
-    currentInspection = insp;
-
-    const groups = {};
-    insp.checklist.forEach((item) => { (groups[item.category] = groups[item.category] || []).push(item); });
-
-    let groupsHtml = "";
-    for (const category of Object.keys(groups)) {
-      groupsHtml += `<div class="report-group"><h3>${escapeHtml(category)}</h3>`;
-      for (const item of groups[category]) {
-        const photosHtml = item.photoIds.map((pid) => {
-          const p = photoMap.get(pid);
-          if (!p) return "";
-          const url = URL.createObjectURL(p.blob);
-          activeObjectUrls.push(url);
-          return `<img src="${url}">`;
-        }).join("");
-        groupsHtml += `
-          <div class="report-item">
-            <div class="report-item-top">
-              <span>${escapeHtml(item.name)}</span>
-              <span class="badge badge-${item.result === "불량" ? "overdue" : item.result === "양호" ? "completed" : "scheduled"}">${escapeHtml(item.result || "미입력")}</span>
-            </div>
-            ${item.note ? `<div class="report-item-note">${escapeHtml(item.note)}</div>` : ""}
-            ${photosHtml ? `<div class="report-item-photos">${photosHtml}</div>` : ""}
-          </div>
-        `;
-      }
-      groupsHtml += `</div>`;
-    }
-
-    $("#reportContent").innerHTML = `
-      <div class="report-header">
-        <h2>소방시설 자체점검 결과 보고서</h2>
-        <div class="sub">${escapeHtml(insp.type)}</div>
-      </div>
-      <div class="report-meta">
-        <div class="report-meta-row"><span class="label">현장명</span><span>${escapeHtml(site ? site.name : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site ? site.address || "-" : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">건물 용도</span><span>${escapeHtml(site ? site.buildingType || "-" : "-")}</span></div>
-        <div class="report-meta-row"><span class="label">점검일</span><span>${escapeHtml(insp.completedDate || insp.scheduledDate || "-")}</span></div>
-        <div class="report-meta-row"><span class="label">점검자</span><span>${escapeHtml(insp.inspector || "-")}</span></div>
-      </div>
-      ${groupsHtml}
-      ${insp.overallNote ? `<h3 style="font-size:14px;color:var(--accent-light);margin:0 0 8px;">종합 소견</h3><div class="report-overall">${escapeHtml(insp.overallNote)}</div>` : ""}
-    `;
-    showScreen("screen-report");
-  }
-
-  $("#btnBackFromReport").addEventListener("click", () => {
-    if (currentSiteId) openSiteDetail(currentSiteId);
-    else { renderSites(); showScreen("screen-sites"); }
-  });
-
-  $("#btnPrintReport").addEventListener("click", () => window.print());
-
-  $("#btnShareReport").addEventListener("click", async () => {
-    const insp = currentInspection;
-    const site = await FireDB.getSite(insp.siteId);
-    const text = `[소방시설 자체점검 결과 보고서]\n현장: ${site ? site.name : ""}\n종류: ${insp.type}\n점검일: ${insp.completedDate || insp.scheduledDate}\n점검자: ${insp.inspector || "-"}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: "소방점검 보고서", text }); } catch (e) { /* 사용자 취소 */ }
-    } else if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      toast("보고서 요약이 클립보드에 복사되었습니다. '인쇄 / PDF 저장' 버튼으로 상세 보고서를 저장할 수 있습니다.");
-    }
   });
 
   // ================= 지적사항 / 이행완료 (점검 기록과 완전히 분리, 현장에만 귀속) =================
@@ -1304,16 +1228,6 @@
     currentDeficiencies = currentDeficiencies.filter((d) => d.id !== defId);
     await renderDeficiencies();
   }
-
-  $("#btnGoToDeficiencies").addEventListener("click", async () => {
-    currentInspection.overallNote = $("#inspOverallNote").value;
-    await persistCurrentInspection();
-    await openSiteDeficiencies(currentInspection.siteId);
-  });
-
-  $("#btnGoToDeficienciesFromReport").addEventListener("click", async () => {
-    await openSiteDeficiencies(currentInspection.siteId);
-  });
 
   $("#btnBackFromDeficiencies").addEventListener("click", async () => {
     await renderDeficiencyHub();
@@ -1915,8 +1829,11 @@
   });
 
   // ================= 초기화 =================
+  // 지적사항 "설비" 입력칸의 자동완성 후보 (소방시설 표준 분류) - 체크리스트 기능과는 무관하게 유지.
+  const DEFICIENCY_CATEGORY_SUGGESTIONS = ["소화설비", "경보설비", "피난구조설비", "소화용수설비", "소화활동설비", "전기 및 기타"];
+
   function bootApp() {
-    $("#categoryList").innerHTML = ChecklistTemplate.map((g) => `<option value="${escapeHtml(g.category)}">`).join("");
+    $("#categoryList").innerHTML = DEFICIENCY_CATEGORY_SUGGESTIONS.map((c) => `<option value="${escapeHtml(c)}">`).join("");
     renderSites();
     showScreen("screen-home");
     renderHomeTodo();
