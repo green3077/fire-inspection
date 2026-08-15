@@ -25,44 +25,36 @@ const HwpxExport = (() => {
     return Array.from(doc.getElementsByTagNameNS(HP, "t"));
   }
 
-  // 라벨 셀(hp:tc) 텍스트가 정확히 일치하는 셀을 찾아, 같은 행(hp:tr) 안의 다음 hp:tc(값 칸)를 반환.
-  // "소재지"처럼 문서에 같은 라벨이 여러 번 나오는 경우를 위해 occurrence(0-base)로 몇 번째 라벨인지 지정.
-  function findValueCellByLabel(doc, labelText, occurrence) {
+  // "대상물 명칭(상호)"/"업체명(상호)" 등은 실제 템플릿에 값 전용 칸이 따로 없다 - 라벨 칸(hp:tc) 자체가
+  // 그 행의 나머지 폭을 차지하는 구조라, "관계인"/"소방안전관리자" 칸이 이미 쓰고 있는 것과 같은 방식으로
+  // 라벨 문단 밑에 값 문단을 새로 이어붙인다(옆 칸이 아니라 라벨 밑에 값이 오도록).
+  function appendValueLineInLabelCell(doc, labelText, value, occurrence) {
     const tcs = Array.from(doc.getElementsByTagNameNS(HP, "tc"));
     let count = 0;
     for (const tc of tcs) {
       const text = Array.from(tc.getElementsByTagNameNS(HP, "t")).map((t) => t.textContent).join("").trim();
       if (text === labelText) {
         if (count === (occurrence || 0)) {
-          let sib = tc.nextElementSibling;
-          while (sib && sib.localName !== "tc") sib = sib.nextElementSibling;
-          return sib;
+          const ps = tc.getElementsByTagNameNS(HP, "p");
+          const labelP = ps[ps.length - 1];
+          const newP = labelP.cloneNode(true);
+          const t = newP.getElementsByTagNameNS(HP, "t")[0];
+          if (t) t.textContent = value;
+          const lineseg = newP.getElementsByTagNameNS(HP, "lineseg")[0];
+          if (lineseg) lineseg.setAttribute("vertpos", String(1600 * ps.length));
+          tc.getElementsByTagNameNS(HP, "subList")[0].appendChild(newP);
+          // 값 줄이 늘어난 만큼 칸 높이도 넉넉하게 키워서 실제 한글에서 텍스트가 잘리지 않도록 한다.
+          const cellSz = tc.getElementsByTagNameNS(HP, "cellSz")[0];
+          if (cellSz) {
+            const h = parseInt(cellSz.getAttribute("height"), 10) || 3009;
+            cellSz.setAttribute("height", String(h + 3009));
+          }
+          return true;
         }
         count++;
       }
     }
-    return null;
-  }
-
-  // 값 칸(hp:tc)에 텍스트 채우기 - 기존 run+t가 있으면 재사용, 없으면(완전히 빈 칸) 첫 문단에 새 run 추가.
-  function setCellText(tc, text, fallbackCharPrIDRef) {
-    if (!tc) return false;
-    const runs = Array.from(tc.getElementsByTagNameNS(HP, "run"));
-    const runWithT = runs.find((r) => r.getElementsByTagNameNS(HP, "t").length > 0);
-    if (runWithT) {
-      runWithT.getElementsByTagNameNS(HP, "t")[0].textContent = text;
-      return true;
-    }
-    const ps = tc.getElementsByTagNameNS(HP, "p");
-    if (ps.length === 0) return false;
-    const doc = tc.ownerDocument;
-    const p = ps[0];
-    const run = el(doc, "hp:run", { charPrIDRef: fallbackCharPrIDRef || "45" });
-    const t = el(doc, "hp:t", {});
-    t.textContent = text;
-    run.appendChild(t);
-    p.appendChild(run);
-    return true;
+    return false;
   }
 
   // 텍스트 노드(hp:t)의 내용이 조건에 맞는 것을 찾아 콜백으로 치환 - occurrence번째(0-base) 일치 항목만 처리.
@@ -101,10 +93,10 @@ const HwpxExport = (() => {
   }
 
   function fillCoverPage(doc, data) {
-    setCellText(findValueCellByLabel(doc, "대상물 명칭(상호)", 0), data.siteName);
-    setCellText(findValueCellByLabel(doc, "대상물 구분(용도)", 0), data.siteType || "");
-    setCellText(findValueCellByLabel(doc, "업체명(상호)", 0), data.company.name || "");
-    setCellText(findValueCellByLabel(doc, "사업자번호", 0), data.company.bizRegNo || "");
+    appendValueLineInLabelCell(doc, "대상물 명칭(상호)", data.siteName, 0);
+    appendValueLineInLabelCell(doc, "대상물 구분(용도)", data.siteType || "", 0);
+    appendValueLineInLabelCell(doc, "업체명(상호)", data.company.name || "", 0);
+    appendValueLineInLabelCell(doc, "사업자번호", data.company.bizRegNo || "", 0);
     // "소재지"는 라벨 셀 하나가 행 전체(colSpan=4)를 차지하는 구조라 별도 값 칸이 없음 - 라벨 뒤에 이어서 삽입.
     insertValueAfterLabelRun(doc, "소재지", data.siteAddr, 0);
     insertValueAfterLabelRun(doc, "소재지", data.company.address || "", 1);
