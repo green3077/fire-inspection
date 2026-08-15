@@ -97,7 +97,7 @@
   // 이행완료 보고서의 "○○ 소방본부장ㆍ소방서장 귀하"를 실제 관할소방서 이름으로 채우기 위한 최선 추정.
   // 정확한 관할 구역은 소방서마다 다르고 공식 API가 없어 완전히 보장할 수 없으므로, 확실히 아는 대구 구/군과
   // 창원(마산/창원/진해로 나뉨) 특례만 정확히 매핑하고, 나머지는 "OO시/군소방서" 일반 규칙으로 추정한다.
-  // 사용자가 site.fireStation을 직접 입력해두면 항상 그 값이 우선한다(이 추정은 그 값의 초기 제안일 뿐).
+  // 현장 등록 화면의 "관할소방서" 칸은 직접 입력할 수 없는 읽기 전용 칸이라, 이 추정값이 곧 저장되는 값이다.
   const DAEGU_FIRE_STATION = {
     "중구": "중부소방서", "동구": "동부소방서", "서구": "서부소방서", "남구": "남부소방서",
     "북구": "북부소방서", "수성구": "수성소방서", "달서구": "달서소방서", "달성군": "달성소방서"
@@ -702,12 +702,15 @@
     }
   }
 
-  // 주소만으로 확실히 알 수 있는 정보가 아니라 최선 추정이므로, 이미 값이 있으면(사용자가 고쳐뒀으면) 덮어쓰지 않는다.
+  // 관할소방서 칸은 이제 직접 입력하지 않고(readonly) 주소만으로 항상 자동 표시한다 - 이행완료보고서 생성 시
+  // 쓰이는 값(site.fireStation)과 완전히 같은 guessFireStation() 결과이므로 보고서 쪽 로직은 그대로 유지된다.
   function autoSuggestFireStation(address) {
-    if ($("#siteFireStation").value.trim()) return;
-    const guess = guessFireStation(address);
-    if (guess) $("#siteFireStation").value = guess;
+    $("#siteFireStation").value = guessFireStation(address) || "";
   }
+
+  $("#siteAddress").addEventListener("input", () => {
+    autoSuggestFireStation($("#siteAddress").value.trim());
+  });
 
   $("#btnLookupBldReg").addEventListener("click", () => {
     lastAutoBldRegAddress = $("#siteAddress").value.trim();
@@ -721,7 +724,7 @@
       lastAutoBldRegAddress = address;
       lookupBldRegForCurrentAddress();
     }
-    if (address) autoSuggestFireStation(address);
+    autoSuggestFireStation(address);
   });
 
   async function openSiteDetail(id) {
@@ -770,7 +773,7 @@
     $("#siteAddress").value = site.address || "";
     $("#siteContactName").value = site.contactName || "";
     $("#siteContactPhone").value = site.contactPhone || "";
-    $("#siteFireStation").value = site.fireStation || "";
+    autoSuggestFireStation(site.address || "");
     $("#siteBuildingType").value = site.buildingType || "";
     $("#siteArea").value = site.area || "";
     $("#siteFloorInfo").value = site.floorInfo || "";

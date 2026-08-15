@@ -197,6 +197,7 @@ input[type="text"], input[type="date"], input[type="tel"], select, textarea {
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; }
 textarea { resize: vertical; }
+input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 
 .btn {
   display: block;
