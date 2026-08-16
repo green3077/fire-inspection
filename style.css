@@ -375,6 +375,68 @@ input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 .badge-overdue { background: var(--danger-bg); color: var(--danger); }
 .badge-completed { background: var(--good-bg); color: var(--good); }
 
+/* 스케줄 관리 (달력 + 업체 선택) */
+.schedule-layout { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.schedule-calendar-panel, .schedule-company-panel {
+  flex: 1 1 260px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(18,22,30,0.06);
+}
+.schedule-calendar-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 17px; font-weight: 800; color: var(--accent-dark); margin-bottom: 10px;
+}
+.btn-cal-nav {
+  border: none; background: var(--neutral-bg); color: var(--accent-dark);
+  width: 34px; height: 34px; border-radius: 50%; font-size: 18px; font-weight: 800;
+  font-family: inherit; cursor: pointer;
+}
+.schedule-calendar-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  font-size: 12.5px; color: var(--text-dim); text-align: center; margin-bottom: 4px; font-weight: 700;
+}
+.schedule-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.schedule-day-cell {
+  aspect-ratio: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text);
+  background: var(--neutral-bg); border: 2px solid transparent;
+}
+.schedule-day-cell.is-empty { visibility: hidden; cursor: default; }
+.schedule-day-cell.has-schedule { background: #dce9f6; }
+.schedule-day-cell.is-confirmed { background: var(--warn-bg); color: var(--warn); }
+.schedule-day-cell.is-today { border-color: var(--gold); }
+.schedule-day-cell.is-selected { border-color: var(--accent); }
+.schedule-day-count { font-size: 10.5px; font-weight: 700; margin-top: 1px; }
+.schedule-legend { display: flex; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-dim); }
+.schedule-legend-item { display: flex; align-items: center; gap: 6px; }
+.schedule-legend-dot { width: 12px; height: 12px; border-radius: 50%; background: #dce9f6; display: inline-block; }
+.schedule-legend-dot-confirmed { background: var(--warn-bg); border: 2px solid var(--warn); }
+
+.schedule-selected-date { font-size: 17px; font-weight: 800; color: var(--accent-dark); margin-bottom: 10px; }
+.schedule-day-company-list { margin-bottom: 12px; }
+.schedule-day-company-chip {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--gold-bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+  font-size: 15px; font-weight: 700; color: var(--accent-dark);
+}
+.schedule-day-company-chip button {
+  border: none; background: none; color: var(--danger); font-size: 18px; font-weight: 800;
+  cursor: pointer; padding: 0 4px; font-family: inherit;
+}
+.schedule-company-search {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  font-size: 15px; font-family: inherit; margin-bottom: 8px;
+}
+.schedule-company-pick-row {
+  padding: 10px 12px; border-radius: 10px; margin-bottom: 6px; font-size: 15px; font-weight: 700;
+  cursor: pointer; background: var(--neutral-bg); color: var(--accent-dark);
+}
+.schedule-company-pick-row.is-added { background: var(--gold-bg); }
+
 .photo-thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .photo-thumb-wrap { position: relative; width: 68px; height: 68px; }
 .photo-thumb { width: 68px; height: 68px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }

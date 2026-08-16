@@ -77,9 +77,9 @@
         <span class="home-tile-icon">🛡️</span>
         <span class="home-tile-label">점검팀</span>
       </button>
-      <button class="home-tile home-tile-wide" id="btnHomeDeficiencies">
-        <span class="home-tile-icon">📌</span>
-        <span class="home-tile-label">지적사항</span>
+      <button class="home-tile home-tile-wide" id="btnHomeScheduleManage">
+        <span class="home-tile-icon">🗓️</span>
+        <span class="home-tile-label">스케줄 관리</span>
       </button>
     </div>
 
@@ -323,6 +323,41 @@
     <div class="hint-text">사무실을 출발지로, 선택한 날짜의 방문 현장을 목적지로 구글 지도 경로가 열립니다. 목적지가 3곳 이상이면 구글 지도 화면에서 '경로 최적화'를 켜면 자동으로 최단 순서로 정렬됩니다.</div>
   </section>
 
+  <!-- 스케줄 관리 (날짜별 방문 예정/확정 업체) -->
+  <section id="screen-schedule-manage" class="screen">
+    <div class="card">
+      <h2>스케줄 관리</h2>
+      <div class="hint-text">달력에서 날짜를 누른 뒤, 오른쪽 업체 목록에서 업체를 누르면 그 날짜의 방문 업체로 추가됩니다. 전화로 방문이 확정되면 "일정 확정" 버튼을 누르세요.</div>
+    </div>
+    <div class="schedule-layout">
+      <div class="schedule-calendar-panel">
+        <div class="schedule-calendar-header">
+          <button class="btn-cal-nav" id="btnSchedulePrevMonth" type="button">‹</button>
+          <span id="scheduleMonthLabel"></span>
+          <button class="btn-cal-nav" id="btnScheduleNextMonth" type="button">›</button>
+        </div>
+        <div class="schedule-calendar-weekdays">
+          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+        <div id="scheduleCalendarGrid" class="schedule-calendar-grid"></div>
+        <div class="schedule-legend">
+          <span class="schedule-legend-item"><span class="schedule-legend-dot"></span>예정</span>
+          <span class="schedule-legend-item"><span class="schedule-legend-dot schedule-legend-dot-confirmed"></span>확정</span>
+        </div>
+      </div>
+      <div class="schedule-company-panel">
+        <div class="schedule-selected-date" id="scheduleSelectedDateLabel"></div>
+        <div id="scheduleDayCompanyList" class="schedule-day-company-list"></div>
+        <button class="btn btn-primary" id="btnScheduleConfirm">✅ 일정 확정</button>
+        <button class="btn btn-secondary hidden" id="btnScheduleUnconfirm">확정 취소</button>
+        <div class="list-heading">업체 선택</div>
+        <input type="text" id="scheduleCompanySearch" class="schedule-company-search" placeholder="업체 검색">
+        <div id="scheduleCompanyPickList" class="schedule-company-pick-list"></div>
+      </div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromScheduleManage">← 홈으로</button>
+  </section>
+
   <!-- 설정 -->
   <section id="screen-settings" class="screen">
     <div class="card">
@@ -375,6 +410,7 @@
 </div>
 
 <nav class="tab-bar no-print">
+  <button class="tab-btn" data-tab="screen-deficiency-hub">📌 지적사항</button>
   <button class="tab-btn" data-tab="screen-sites">📋 거래처보기</button>
   <button class="tab-btn" data-tab="screen-route">🗓️ 일정관리</button>
   <button class="tab-btn" data-tab="screen-settings">⚙️ 설정</button>

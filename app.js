@@ -8,6 +8,9 @@
   let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
   let sitesSelectedRegion = null; // 지역별 모드에서 드릴다운한 지역 (구/도 이름), null이면 지역 버튼 목록 표시 중
   let comprehensiveTarget = null; // 현장 등록/수정 폼의 "종합점검대상/해당없음" 토글 상태: true | false | null(미정)
+  let scheduleCalDate = new Date();   // 스케줄 관리 달력이 보여주는 월
+  let scheduleSelectedDate = "";      // 스케줄 관리에서 선택된 날짜 (YYYY-MM-DD)
+  let scheduleCompanySearchTerm = ""; // 스케줄 관리 업체 선택 목록 검색어
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -242,7 +245,13 @@
   $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
   $("#btnHomeConstructionTeam").addEventListener("click", () => { renderConstructionTeam(); showScreen("screen-construction-team"); });
   $("#btnHomeInspectionTeam").addEventListener("click", () => showScreen("screen-inspection-team"));
-  $("#btnHomeDeficiencies").addEventListener("click", () => { renderDeficiencyHub(); showScreen("screen-deficiency-hub"); });
+  $("#btnHomeScheduleManage").addEventListener("click", async () => {
+    scheduleCalDate = new Date();
+    scheduleSelectedDate = todayISO();
+    await refreshScheduleManage();
+    showScreen("screen-schedule-manage");
+  });
+  $("#btnBackFromScheduleManage").addEventListener("click", goHome);
   $("#btnBackFromConstructionTeam").addEventListener("click", goHome);
   $("#btnBackFromInspectionTeam").addEventListener("click", goHome);
 
@@ -295,6 +304,7 @@
   $$(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
+      if (tab === "screen-deficiency-hub") renderDeficiencyHub();
       if (tab === "screen-sites") renderSites();
       if (tab === "screen-route") renderRoute();
       if (tab === "screen-settings") renderSettings();
@@ -1959,6 +1969,141 @@
 
     if (skipped > 0) toast(`주소가 없는 현장 ${skipped}곳은 동선에서 제외되었습니다.`);
     window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank");
+  });
+
+  // ================= 스케줄 관리 (날짜별 방문 예정/확정 업체) =================
+  // 점검 기록(inspections)과는 무관한 가벼운 일정 - 날짜에 업체를 담아두고, 전화로 방문이
+  // 확정되면 그 날짜 전체를 "확정"으로 표시한다(업체 개별 확정이 아니라 날짜 단위 확정).
+  function scheduleDateStr(year, month, day) {
+    return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  async function renderScheduleCalendar() {
+    const year = scheduleCalDate.getFullYear();
+    const month = scheduleCalDate.getMonth();
+    $("#scheduleMonthLabel").textContent = `${year}년 ${month + 1}월`;
+
+    const schedules = await FireDB.getAllSchedules();
+    const scheduleMap = new Map(schedules.map((s) => [s.id, s]));
+
+    const startWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = todayISO();
+
+    let cellsHtml = "";
+    for (let i = 0; i < startWeekday; i++) {
+      cellsHtml += `<div class="schedule-day-cell is-empty"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = scheduleDateStr(year, month, day);
+      const sched = scheduleMap.get(dateStr);
+      const count = sched ? sched.siteIds.length : 0;
+      const classes = ["schedule-day-cell"];
+      if (count > 0) classes.push("has-schedule");
+      if (sched && sched.confirmed) classes.push("is-confirmed");
+      if (dateStr === today) classes.push("is-today");
+      if (dateStr === scheduleSelectedDate) classes.push("is-selected");
+      cellsHtml += `
+        <div class="${classes.join(" ")}" data-date="${dateStr}">
+          <span>${day}</span>
+          ${count > 0 ? `<span class="schedule-day-count">${count}곳</span>` : ""}
+        </div>
+      `;
+    }
+    $("#scheduleCalendarGrid").innerHTML = cellsHtml;
+    $$("#scheduleCalendarGrid .schedule-day-cell:not(.is-empty)").forEach((el) => {
+      el.addEventListener("click", async () => {
+        scheduleSelectedDate = el.dataset.date;
+        await refreshScheduleManage();
+      });
+    });
+  }
+
+  async function renderScheduleDayDetail() {
+    const date = scheduleSelectedDate;
+    const d = new Date(date + "T00:00:00");
+    $("#scheduleSelectedDateLabel").textContent = `${date} (${WEEKDAY_LABEL[d.getDay()]}) 방문 예정 업체`;
+
+    const [sched, sites] = await Promise.all([FireDB.getScheduleByDate(date), FireDB.getAllSites()]);
+    const siteMap = new Map(sites.map((s) => [s.id, s]));
+    const siteIds = sched ? sched.siteIds : [];
+    const confirmed = !!(sched && sched.confirmed);
+
+    const list = $("#scheduleDayCompanyList");
+    if (siteIds.length === 0) {
+      list.innerHTML = `<div class="empty-state">아래 업체 목록에서 업체를 눌러 이 날짜에 추가하세요.</div>`;
+    } else {
+      list.innerHTML = siteIds.map((id) => `
+        <div class="schedule-day-company-chip">
+          <span>${escapeHtml(siteMap.has(id) ? siteMap.get(id).name : "삭제된 업체")}</span>
+          <button type="button" data-remove="${id}">×</button>
+        </div>
+      `).join("");
+      $$("#scheduleDayCompanyList [data-remove]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          await FireDB.removeSiteFromSchedule(date, btn.dataset.remove);
+          await refreshScheduleManage();
+          toast("삭제했습니다.");
+        });
+      });
+    }
+
+    $("#btnScheduleConfirm").classList.toggle("hidden", siteIds.length === 0 || confirmed);
+    $("#btnScheduleUnconfirm").classList.toggle("hidden", !confirmed);
+  }
+
+  async function renderScheduleCompanyPickList() {
+    const [sites, sched] = await Promise.all([FireDB.getAllSites(), FireDB.getScheduleByDate(scheduleSelectedDate)]);
+    const addedIds = new Set(sched ? sched.siteIds : []);
+    const term = scheduleCompanySearchTerm.trim();
+    const filtered = (term ? sites.filter((s) => s.name.includes(term)) : sites)
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+    const list = $("#scheduleCompanyPickList");
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="empty-state">${term ? "검색 결과가 없습니다." : "등록된 업체가 없습니다."}</div>`;
+      return;
+    }
+    list.innerHTML = filtered.map((s) => `
+      <div class="schedule-company-pick-row ${addedIds.has(s.id) ? "is-added" : ""}" data-id="${s.id}">
+        ${addedIds.has(s.id) ? "✅ " : ""}${escapeHtml(s.name)}
+      </div>
+    `).join("");
+    $$("#scheduleCompanyPickList .schedule-company-pick-row").forEach((el) => {
+      el.addEventListener("click", async () => {
+        const id = el.dataset.id;
+        if (addedIds.has(id)) await FireDB.removeSiteFromSchedule(scheduleSelectedDate, id);
+        else await FireDB.addSiteToSchedule(scheduleSelectedDate, id);
+        await refreshScheduleManage();
+      });
+    });
+  }
+
+  async function refreshScheduleManage() {
+    await Promise.all([renderScheduleCalendar(), renderScheduleDayDetail(), renderScheduleCompanyPickList()]);
+  }
+
+  $("#btnSchedulePrevMonth").addEventListener("click", async () => {
+    scheduleCalDate = new Date(scheduleCalDate.getFullYear(), scheduleCalDate.getMonth() - 1, 1);
+    await renderScheduleCalendar();
+  });
+  $("#btnScheduleNextMonth").addEventListener("click", async () => {
+    scheduleCalDate = new Date(scheduleCalDate.getFullYear(), scheduleCalDate.getMonth() + 1, 1);
+    await renderScheduleCalendar();
+  });
+  $("#scheduleCompanySearch").addEventListener("input", (e) => {
+    scheduleCompanySearchTerm = e.target.value;
+    renderScheduleCompanyPickList();
+  });
+  $("#btnScheduleConfirm").addEventListener("click", async () => {
+    await FireDB.setScheduleConfirmed(scheduleSelectedDate, true);
+    await refreshScheduleManage();
+    toast("일정을 확정했습니다.");
+  });
+  $("#btnScheduleUnconfirm").addEventListener("click", async () => {
+    await FireDB.setScheduleConfirmed(scheduleSelectedDate, false);
+    await refreshScheduleManage();
+    toast("확정을 취소했습니다.");
   });
 
   // ================= 초기화 =================

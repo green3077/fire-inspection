@@ -1,13 +1,14 @@
 // 소방점검 관리 데이터 저장용 IndexedDB 래퍼
 const FireDB = (() => {
   const DB_NAME = "fire-inspection-db";
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   const STORES = {
     sites: "sites",
     inspections: "inspections",
     photos: "photos",
     deficiencies: "deficiencies",
-    attachments: "attachments"
+    attachments: "attachments",
+    schedules: "schedules"
   };
   let dbPromise = null;
 
@@ -47,6 +48,9 @@ const FireDB = (() => {
         if (!db.objectStoreNames.contains(STORES.attachments)) {
           const store = db.createObjectStore(STORES.attachments, { keyPath: "id" });
           store.createIndex("siteId", "siteId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.schedules)) {
+          db.createObjectStore(STORES.schedules, { keyPath: "id" });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -215,6 +219,26 @@ const FireDB = (() => {
     async deleteAttachment(id) {
       return remove(STORES.attachments, id);
     },
-    getAttachmentsBySite: (siteId) => getAllByIndex(STORES.attachments, "siteId", siteId)
+    getAttachmentsBySite: (siteId) => getAllByIndex(STORES.attachments, "siteId", siteId),
+
+    // Schedules (스케줄 관리 - 날짜별 방문 예정 업체. id = "YYYY-MM-DD", 점검 기록과 무관한 가벼운 일정)
+    getScheduleByDate: (date) => get(STORES.schedules, date),
+    getAllSchedules: () => getAll(STORES.schedules),
+    async addSiteToSchedule(date, siteId) {
+      const existing = await get(STORES.schedules, date);
+      const siteIds = existing ? [...existing.siteIds] : [];
+      if (!siteIds.includes(siteId)) siteIds.push(siteId);
+      return put(STORES.schedules, { id: date, siteIds, confirmed: existing ? existing.confirmed : false });
+    },
+    async removeSiteFromSchedule(date, siteId) {
+      const existing = await get(STORES.schedules, date);
+      if (!existing) return null;
+      return put(STORES.schedules, { ...existing, siteIds: existing.siteIds.filter((id) => id !== siteId) });
+    },
+    async setScheduleConfirmed(date, confirmed) {
+      const existing = await get(STORES.schedules, date);
+      if (!existing) return null;
+      return put(STORES.schedules, { ...existing, confirmed });
+    }
   };
 })();
