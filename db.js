@@ -112,6 +112,13 @@ const FireDB = (() => {
     await rtdb().ref(path).remove();
   }
 
+  // 사진이 아직 없는 지적사항(beforePhotoIds/afterPhotoIds가 빈 배열)도 같은 이유로 저장 시
+  // 그 필드 자체가 사라진다 - 읽을 때마다 항상 실제 배열을 보장해준다.
+  function normalizeDeficiency(def) {
+    if (!def) return null;
+    return { ...def, beforePhotoIds: def.beforePhotoIds || [], afterPhotoIds: def.afterPhotoIds || [] };
+  }
+
   // 주의: Firebase Realtime Database는 빈 배열([])을 저장하지 않고 그냥 키 자체를 지워버린다
   // (siteIds가 전부 지워진 날짜를 다시 읽으면 siteIds 필드가 아예 없이 돌아온다) - 그래서
   // 스케줄을 읽을 때마다 normalizeSchedule로 항상 실제 배열을 보장해준다.
@@ -223,9 +230,10 @@ const FireDB = (() => {
       }
       return fbRemove(`deficiencies/${id}`);
     },
-    getDeficiency: (id) => fbGet(`deficiencies/${id}`),
-    getAllDeficiencies: () => fbGetAll("deficiencies"),
-    getDeficienciesBySite: async (siteId) => (await fbGetAll("deficiencies")).filter((d) => d.siteId === siteId),
+    getDeficiency: async (id) => normalizeDeficiency(await fbGet(`deficiencies/${id}`)),
+    getAllDeficiencies: async () => (await fbGetAll("deficiencies")).map(normalizeDeficiency),
+    getDeficienciesBySite: async (siteId) =>
+      (await fbGetAll("deficiencies")).filter((d) => d.siteId === siteId).map(normalizeDeficiency),
 
     // Attachments (현장에 첨부하는 일반 파일 - 사진과 같은 이유로 아직 이 기기에만 저장)
     async addAttachment(att) {
