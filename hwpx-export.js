@@ -326,10 +326,11 @@ const HwpxExport = (() => {
 
       // photoMap은 app.js에서 FireDB.getPhotosBySite() 결과를 id 기준으로 매핑한 것 - 값은 Blob이 아니라
       // { id, siteId, itemId, role, blob, ... } 사진 레코드 전체이므로 .blob으로 꺼내 써야 한다.
-      const beforeId = (def.beforePhotoIds || [])[0];
-      const afterId = (def.afterPhotoIds || [])[0];
-      const beforePhoto = beforeId ? photoMap.get(beforeId) : null;
-      const afterPhoto = afterId ? photoMap.get(afterId) : null;
+      // 사진은 기기별 로컬 저장이라(같은 항목의 사진을 다른 기기에서 추가로 올렸을 수 있음), 배열의
+      // 첫 번째 id를 무조건 쓰면 그 사진이 하필 다른 기기에서 올린 것일 때 이 기기엔 없어서 "사진 없음"으로
+      // 잘못 나온다 - 화면/PDF 미리보기(photoCellHtml)처럼 이 기기에 실제로 있는 첫 번째 사진을 찾아 쓴다.
+      const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).find(Boolean) || null;
+      const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).find(Boolean) || null;
       await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
       await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
 
