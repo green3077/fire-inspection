@@ -1,6 +1,6 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0",
+  "versionCode": 2,
+  "versionName": "1.1",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "첫 안드로이드 앱(APK) 배포, 앱 내 업데이트 확인 기능 추가"
+  "notes": "아이콘을 꽉 차게 다시 그리고 앱 이름을 \"소방점검 관리 불사조\"로 변경"
 }
