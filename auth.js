@@ -43,13 +43,22 @@
 
   // 앱 시작 시 한 번, Firebase가 기억하고 있는 로그인 상태(기기별로 유지됨)를 확인한다.
   // 로그인돼 있으면 다시 로그인할 필요 없이 바로 앱을 사용할 수 있다.
+  // Firebase 스크립트 로드 실패 등으로 여기서 예외가 나면 로그인 화면조차 뜨지 않고 앱이
+  // 먹통이 될 수 있으므로, 실패해도 반드시 "로그인 안 됨"으로 resolve해서 로그인 화면이 뜨게 한다.
   function onReady() {
     return new Promise((resolve) => {
-      const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
-        unsubscribe();
-        currentUser = user;
-        resolve(!!user);
-      });
+      try {
+        const unsubscribe = firebase.auth().onAuthStateChanged(
+          (user) => {
+            unsubscribe();
+            currentUser = user;
+            resolve(!!user);
+          },
+          () => resolve(false)
+        );
+      } catch (err) {
+        resolve(false);
+      }
     });
   }
 
