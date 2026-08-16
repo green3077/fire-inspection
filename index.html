@@ -399,12 +399,10 @@
       </label>
     </div>
     <div class="card" id="authSettingsCard">
-      <h2>🔒 외부 접속 비밀번호</h2>
-      <div class="hint-text">외부 링크(GitHub Pages)로 접속할 때만 물어보는 아이디/비밀번호입니다. 사무실 Wi-Fi나 이 컴퓨터에서 직접 여는 경우에는 물어보지 않습니다.</div>
-      <div class="field"><span>아이디</span><input type="text" id="authUsername"></div>
-      <div class="field"><span>새 비밀번호 (바꿀 때만 입력)</span><input type="password" id="authPassword" placeholder="비워두면 기존 비밀번호 유지"></div>
-      <button class="btn btn-secondary" id="btnSaveAuth">저장</button>
-      <button class="btn btn-secondary" id="btnAuthLogout">외부 접속 로그아웃</button>
+      <h2>🔒 로그인 계정</h2>
+      <div class="hint-text">이 자료(거래처·점검기록·지적사항·스케줄)는 로그인한 사람 누구나 함께 보고 입력할 수 있는 공용 자료입니다.</div>
+      <div class="field"><span>현재 로그인</span><span id="authCurrentUser" class="field-static"></span></div>
+      <button class="btn btn-secondary" id="btnAuthLogout">로그아웃</button>
     </div>
   </section>
 
@@ -425,6 +423,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script src="version.js"></script>
 <script src="auth.js"></script>
 <script src="db.js"></script>

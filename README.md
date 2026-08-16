@@ -1,9 +1,13 @@
 # fire-inspection (소방점검 관리)
 
-조은소방 소방점검 관리 웹앱. 순수 HTML/CSS/JS (프레임워크·빌드 과정 없음), 데이터는 브라우저 IndexedDB에 저장됩니다.
+조은소방 소방점검 관리 웹앱. 순수 HTML/CSS/JS (프레임워크·빌드 과정 없음).
+
+거래처/점검기록/지적사항/스케줄은 Firebase Realtime Database(공용 온라인 저장소, 로그인 필요)에 저장되어 누가 접속하든 같은 자료를 봅니다. 사진/첨부파일은 아직 각 기기의 브라우저 IndexedDB에만 저장됩니다(공유 저장소로 옮기는 작업은 별도 진행 예정).
 
 - **배포 주소**: https://green3077.github.io/fire-inspection/
 - **로컬 개발**: `python serve.py` 실행 후 `http://localhost:8794` 접속 (같은 Wi-Fi의 휴대폰에서도 콘솔에 뜨는 LAN 주소로 접속 가능)
+- **로그인**: Firebase Authentication(이메일/비밀번호) 계정을 발급받아 로그인. 아이디↔이메일 매핑은 `auth.js`의 `ACCOUNTS`에서 관리. 계정 추가/삭제는 [Firebase 콘솔](https://console.firebase.google.com/project/fire-inspection-cec4b/authentication/users)에서.
+- **Firebase 프로젝트**: `fire-inspection-cec4b` (Realtime Database + Authentication, Spark 무료 요금제). 설정값은 `firebase-config.js`.
 
 ## 파일 구조
 
@@ -11,7 +15,9 @@
 |---|---|
 | `index.html` | 전체 화면 마크업 |
 | `app.js` | 전체 UI 로직 (단일 IIFE) |
-| `db.js` | IndexedDB 래퍼 (sites/inspections/deficiencies/photos 스토어) |
+| `db.js` | 데이터 저장소 래퍼 - sites/inspections/deficiencies/schedules는 Firebase, photos/attachments는 IndexedDB |
+| `auth.js` | Firebase Authentication 로그인 (아이디↔이메일 매핑 포함) |
+| `firebase-config.js` | Firebase 프로젝트 연결 설정값 |
 | `checklist-data.js` | 소방점검 표준 체크리스트 템플릿 |
 | `import.js` | 지적사항 표 파서 (Excel/Word/PDF) |
 | `client-import.js` | 거래처 정보 자동 인식 (보고서 파일 업로드 시) |
@@ -36,6 +42,8 @@
 4. `git push` 전에는 항상 로컬(`localhost:8794`)에서 직접 클릭해보고 콘솔 에러 없는지 확인
 5. GitHub Pages 배포는 `main` 브랜치가 그대로 반영되므로, 검증 안 된 변경은 바로 push하지 않기
 
-### IndexedDB는 브라우저별로 분리됨
+### ⚠️ 로컬 개발도 실제 운영 데이터베이스를 씁니다
 
-로컬(`localhost:8794`)과 GitHub Pages(`green3077.github.io`)는 각각 다른 IndexedDB 오리진이라 데이터가 자동으로 섞이지 않습니다. 로컬 개발 중 넣은 테스트 데이터가 배포판에 영향을 주지 않으니 자유롭게 테스트하세요. 단, 팀원 각자의 로컬 DB에는 실제로 입력한 거래처 데이터가 쌓일 수 있으니 남의 브라우저의 IndexedDB를 임의로 초기화하지 않기.
+거래처/점검기록/지적사항/스케줄은 Firebase(`fire-inspection-cec4b`) 하나를 로컬(`localhost:8794`)과 GitHub Pages 배포판이 **똑같이** 바라봅니다. 예전 IndexedDB 방식과 달리 로컬에서 테스트로 넣은 거래처도 실제 운영 화면에 바로 나타나므로, 로컬에서 테스트할 때는 꼭 테스트 데이터를 다시 지우고 끝내세요.
+
+사진/첨부파일만 예외로, 아직 IndexedDB(브라우저별로 분리)에 저장되어 로컬과 배포판이 서로 다른 사본을 봅니다.

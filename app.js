@@ -1852,8 +1852,7 @@
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
     $("#aiEnabledToggle").checked = AiFill.isEnabled();
     renderDriveStatus();
-    $("#authUsername").value = Auth.getUsername();
-    $("#authPassword").value = "";
+    $("#authCurrentUser").textContent = Auth.getDisplayName();
   }
 
   function renderDriveStatus() {
@@ -1878,16 +1877,13 @@
     toast(e.target.checked ? "AI 자동 인식을 켰습니다." : "AI 자동 인식을 껐습니다.");
   });
 
-  $("#btnSaveAuth").addEventListener("click", () => {
-    Auth.changeCredentials($("#authUsername").value, $("#authPassword").value);
-    $("#authPassword").value = "";
-    $("#authUsername").value = Auth.getUsername();
-    toast("외부 접속 아이디/비밀번호가 저장되었습니다.");
-  });
-
   $("#btnAuthLogout").addEventListener("click", () => {
     Auth.logout();
-    toast("외부 접속 로그아웃되었습니다. 다음에 열면 다시 로그인해야 합니다.");
+    $("#loginUsername").value = "";
+    $("#loginPassword").value = "";
+    $("#loginGate").classList.remove("hidden");
+    showScreen("screen-home");
+    toast("로그아웃되었습니다.");
   });
 
   async function renderRouteList() {
@@ -2132,11 +2128,15 @@
     renderHomeTodo();
   }
 
-  // 외부 접속(GitHub Pages 등)일 때만 로그인 게이트를 띄운다 - 사무실 LAN/로컬은 그대로 통과.
-  function attemptLogin() {
+  // 이제 모든 자료(거래처·점검기록·지적사항·스케줄)가 로그인한 사람만 읽고 쓸 수 있는 공용
+  // 온라인 저장소(Firebase)에 있어서, 예전과 달리 사무실 Wi-Fi/로컬에서도 로그인이 항상 필요하다.
+  async function attemptLogin() {
     const username = $("#loginUsername").value.trim();
     const password = $("#loginPassword").value;
-    if (Auth.tryLogin(username, password)) {
+    $("#btnLogin").disabled = true;
+    const ok = await Auth.tryLogin(username, password);
+    $("#btnLogin").disabled = false;
+    if (ok) {
       $("#loginError").classList.add("hidden");
       $("#loginGate").classList.add("hidden");
       bootApp();
@@ -2150,10 +2150,12 @@
   $("#loginUsername").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
   $("#loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
 
-  if (Auth.isLoggedIn()) {
-    bootApp();
-  } else {
-    $("#loginGate").classList.remove("hidden");
-    $("#loginUsername").focus();
-  }
+  Auth.onReady().then((loggedIn) => {
+    if (loggedIn) {
+      bootApp();
+    } else {
+      $("#loginGate").classList.remove("hidden");
+      $("#loginUsername").focus();
+    }
+  });
 })();
