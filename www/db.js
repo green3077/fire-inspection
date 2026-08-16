@@ -1,0 +1,274 @@
+// 소방점검 관리 데이터 저장소.
+// 거래처(sites)/점검기록(inspections)/지적사항(deficiencies)/스케줄(schedules)은 팀 전체가
+// 공유해야 하는 자료라서 Firebase Realtime Database(온라인, 로그인한 사람 전원이 같은 자료를 봄)에 저장한다.
+// 사진(photos)/첨부파일(attachments)은 용량이 커서 아직은 기존처럼 이 기기의 IndexedDB에만 저장된다
+// (공유 저장소로 옮기는 작업은 별도 진행 예정 - 그 전까지는 사진은 올린 사람의 기기에서만 보인다).
+const FireDB = (() => {
+  const DB_NAME = "fire-inspection-db";
+  const DB_VERSION = 4;
+  const STORES = {
+    photos: "photos",
+    attachments: "attachments"
+  };
+  let dbPromise = null;
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onblocked = () => {
+        if (window.toast) window.toast("다른 탭/창에서 이 앱이 열려 있어 데이터베이스 업데이트가 대기 중입니다. 다른 탭을 닫아주세요.", "error");
+      };
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        const tx = req.transaction;
+        let photoStore;
+        if (!db.objectStoreNames.contains(STORES.photos)) {
+          photoStore = db.createObjectStore(STORES.photos, { keyPath: "id" });
+          photoStore.createIndex("inspectionId", "inspectionId", { unique: false });
+        } else {
+          photoStore = tx.objectStore(STORES.photos);
+        }
+        if (!photoStore.indexNames.contains("siteId")) {
+          photoStore.createIndex("siteId", "siteId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.attachments)) {
+          const store = db.createObjectStore(STORES.attachments, { keyPath: "id" });
+          store.createIndex("siteId", "siteId", { unique: false });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  function genId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  async function put(storeName, record) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).put(record);
+      tx.oncomplete = () => resolve(record);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function get(storeName, id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const req = tx.objectStore(storeName).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function getAllByIndex(storeName, indexName, value) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const req = tx.objectStore(storeName).index(indexName).getAll(value);
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function remove(storeName, id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // ---------- Firebase Realtime Database (공유 자료: 거래처/점검기록/지적사항/스케줄) ----------
+  function rtdb() {
+    return firebase.database();
+  }
+
+  async function fbGet(path) {
+    const snap = await rtdb().ref(path).once("value");
+    return snap.exists() ? snap.val() : null;
+  }
+
+  async function fbGetAll(path) {
+    const snap = await rtdb().ref(path).once("value");
+    const val = snap.val();
+    return val ? Object.values(val) : [];
+  }
+
+  async function fbSet(path, value) {
+    await rtdb().ref(path).set(value);
+    return value;
+  }
+
+  async function fbRemove(path) {
+    await rtdb().ref(path).remove();
+  }
+
+  // 사진이 아직 없는 지적사항(beforePhotoIds/afterPhotoIds가 빈 배열)도 같은 이유로 저장 시
+  // 그 필드 자체가 사라진다 - 읽을 때마다 항상 실제 배열을 보장해준다.
+  function normalizeDeficiency(def) {
+    if (!def) return null;
+    return { ...def, beforePhotoIds: def.beforePhotoIds || [], afterPhotoIds: def.afterPhotoIds || [] };
+  }
+
+  // 주의: Firebase Realtime Database는 빈 배열([])을 저장하지 않고 그냥 키 자체를 지워버린다
+  // (siteIds가 전부 지워진 날짜를 다시 읽으면 siteIds 필드가 아예 없이 돌아온다) - 그래서
+  // 스케줄을 읽을 때마다 normalizeSchedule로 항상 실제 배열을 보장해준다.
+  function normalizeSchedule(date, sched) {
+    if (!sched) return null;
+    return { id: date, confirmed: !!sched.confirmed, siteIds: sched.siteIds || [] };
+  }
+  async function getScheduleByDate(date) {
+    return normalizeSchedule(date, await fbGet(`schedules/${date}`));
+  }
+  async function getAllSchedules() {
+    const snap = await rtdb().ref("schedules").once("value");
+    const val = snap.val();
+    if (!val) return [];
+    return Object.keys(val).map((date) => normalizeSchedule(date, val[date]));
+  }
+
+  const api = {
+    genId,
+
+    // Sites
+    async addSite(site) {
+      const id = site.id || genId();
+      return fbSet(`sites/${id}`, { ...site, id });
+    },
+    async updateSite(id, changes) {
+      const existing = await fbGet(`sites/${id}`);
+      if (!existing) throw new Error("Site not found: " + id);
+      return fbSet(`sites/${id}`, { ...existing, ...changes, id });
+    },
+    async deleteSite(id) {
+      const inspections = (await fbGetAll("inspections")).filter((i) => i.siteId === id);
+      for (const insp of inspections) {
+        await api.deleteInspection(insp.id);
+      }
+      const defs = (await fbGetAll("deficiencies")).filter((d) => d.siteId === id);
+      for (const def of defs) {
+        await api.deleteDeficiency(def.id);
+      }
+      const atts = await getAllByIndex(STORES.attachments, "siteId", id);
+      for (const att of atts) {
+        await remove(STORES.attachments, att.id);
+      }
+      // 현장점검 사진 갤러리 사진은 inspectionId 없이 siteId로만 귀속되므로 별도로 정리해야 한다
+      // (지적사항 사진은 deleteDeficiency가 이미 개별 id로 지웠으므로 여기선 중복 삭제라도 무해함).
+      const sitePhotos = await getAllByIndex(STORES.photos, "siteId", id);
+      for (const p of sitePhotos) {
+        await remove(STORES.photos, p.id);
+      }
+      return fbRemove(`sites/${id}`);
+    },
+    getSite: (id) => fbGet(`sites/${id}`),
+    getAllSites: () => fbGetAll("sites"),
+
+    // Inspections
+    async addInspection(inspection) {
+      const id = inspection.id || genId();
+      return fbSet(`inspections/${id}`, { ...inspection, id });
+    },
+    async updateInspection(id, changes) {
+      const existing = await fbGet(`inspections/${id}`);
+      if (!existing) throw new Error("Inspection not found: " + id);
+      return fbSet(`inspections/${id}`, { ...existing, ...changes, id });
+    },
+    async deleteInspection(id) {
+      const photos = await getAllByIndex(STORES.photos, "inspectionId", id);
+      for (const p of photos) {
+        await remove(STORES.photos, p.id);
+      }
+      return fbRemove(`inspections/${id}`);
+    },
+    getInspection: (id) => fbGet(`inspections/${id}`),
+    getAllInspections: () => fbGetAll("inspections"),
+    getInspectionsBySite: async (siteId) => (await fbGetAll("inspections")).filter((i) => i.siteId === siteId),
+
+    // Photos (이 기기에만 저장 - 아직 공유 저장소로 옮기기 전)
+    async addPhoto(photo) {
+      const id = photo.id || genId();
+      return put(STORES.photos, { ...photo, id });
+    },
+    async deletePhoto(id) {
+      return remove(STORES.photos, id);
+    },
+    async updatePhoto(id, changes) {
+      const existing = await get(STORES.photos, id);
+      if (!existing) throw new Error("Photo not found: " + id);
+      return put(STORES.photos, { ...existing, ...changes, id });
+    },
+    getPhoto: (id) => get(STORES.photos, id),
+    getPhotosByInspection: (inspectionId) => getAllByIndex(STORES.photos, "inspectionId", inspectionId),
+    getPhotosBySite: (siteId) => getAllByIndex(STORES.photos, "siteId", siteId),
+
+    // Deficiencies (현장에 직접 귀속, 점검 기록과 무관)
+    async addDeficiency(def) {
+      const id = def.id || genId();
+      return fbSet(`deficiencies/${id}`, { ...def, id });
+    },
+    async updateDeficiency(id, changes) {
+      const existing = await fbGet(`deficiencies/${id}`);
+      if (!existing) throw new Error("Deficiency not found: " + id);
+      return fbSet(`deficiencies/${id}`, { ...existing, ...changes, id });
+    },
+    async deleteDeficiency(id) {
+      const def = await fbGet(`deficiencies/${id}`);
+      if (def) {
+        for (const pid of [...(def.beforePhotoIds || []), ...(def.afterPhotoIds || [])]) {
+          await remove(STORES.photos, pid);
+        }
+      }
+      return fbRemove(`deficiencies/${id}`);
+    },
+    getDeficiency: async (id) => normalizeDeficiency(await fbGet(`deficiencies/${id}`)),
+    getAllDeficiencies: async () => (await fbGetAll("deficiencies")).map(normalizeDeficiency),
+    getDeficienciesBySite: async (siteId) =>
+      (await fbGetAll("deficiencies")).filter((d) => d.siteId === siteId).map(normalizeDeficiency),
+
+    // Attachments (현장에 첨부하는 일반 파일 - 사진과 같은 이유로 아직 이 기기에만 저장)
+    async addAttachment(att) {
+      const id = att.id || genId();
+      return put(STORES.attachments, { ...att, id });
+    },
+    async deleteAttachment(id) {
+      return remove(STORES.attachments, id);
+    },
+    getAttachmentsBySite: (siteId) => getAllByIndex(STORES.attachments, "siteId", siteId),
+
+    // Schedules (스케줄 관리 - 날짜별 방문 예정 업체. id = "YYYY-MM-DD", 점검 기록과 무관한 가벼운 일정)
+    getScheduleByDate,
+    getAllSchedules,
+    async addSiteToSchedule(date, siteId) {
+      const existing = await getScheduleByDate(date);
+      const siteIds = existing ? [...existing.siteIds] : [];
+      if (!siteIds.includes(siteId)) siteIds.push(siteId);
+      return fbSet(`schedules/${date}`, { id: date, siteIds, confirmed: existing ? existing.confirmed : false });
+    },
+    async removeSiteFromSchedule(date, siteId) {
+      const existing = await getScheduleByDate(date);
+      if (!existing) return null;
+      return fbSet(`schedules/${date}`, { ...existing, siteIds: existing.siteIds.filter((id) => id !== siteId) });
+    },
+    async setScheduleSiteIds(date, siteIds) {
+      const existing = await getScheduleByDate(date);
+      return fbSet(`schedules/${date}`, { id: date, siteIds: [...siteIds], confirmed: existing ? existing.confirmed : false });
+    },
+    async setScheduleConfirmed(date, confirmed) {
+      const existing = await getScheduleByDate(date);
+      if (!existing) return null;
+      return fbSet(`schedules/${date}`, { ...existing, confirmed });
+    }
+  };
+
+  return api;
+})();

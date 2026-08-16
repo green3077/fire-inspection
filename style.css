@@ -298,6 +298,7 @@ input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 .list-heading { font-size: 18px; color: var(--accent-dark); font-weight: 800; margin: 20px 4px 10px; }
 .hint-text { font-size: 14.5px; color: var(--text-dim); line-height: 1.6; margin: 6px 4px 12px; }
 .card .hint-text { margin: -6px 0 6px; }
+.status-text { font-size: 13.5px; color: var(--text-dim); min-height: 18px; margin: 8px 4px 0; }
 
 .tab-bar {
   position: fixed;

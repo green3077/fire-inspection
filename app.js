@@ -1855,6 +1855,52 @@
     $("#authCurrentUser").textContent = Auth.getDisplayName();
   }
 
+  // ---------- 앱 버전 / 업데이트 확인 ----------
+  // 사이드로드 앱(스토어 밖에서 apk로 설치)은 스스로를 조용히 덮어쓸 수 없으므로(설치는 항상 사용자
+  // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
+  // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
+  // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
+  const APP_VERSION_CODE = 1;
+  const APP_VERSION_NAME = "1.0";
+  const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
+  const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const UpdateBridge = IS_NATIVE_UPDATE ? window.Capacitor.registerPlugin("UpdateBridge") : null;
+  let pendingApkUrl = null;
+
+  $("#appVersionText").textContent =
+    "현재 버전: v" + APP_VERSION_NAME + (typeof APP_VERSION !== "undefined" ? " (빌드: " + APP_VERSION + ")" : "");
+
+  $("#btnCheckUpdate").addEventListener("click", async () => {
+    if (pendingApkUrl) {
+      if (IS_NATIVE_UPDATE && UpdateBridge) {
+        UpdateBridge.openExternal({ url: pendingApkUrl }).catch(() => {
+          $("#updateStatus").textContent = "업데이트 파일을 여는 데 실패했습니다.";
+        });
+      } else {
+        window.open(pendingApkUrl, "_blank");
+      }
+      return;
+    }
+    $("#updateStatus").textContent = "업데이트 확인 중...";
+    try {
+      const res = await fetch(UPDATE_MANIFEST_URL + "?t=" + Date.now());
+      const info = await res.json();
+      if (!info || typeof info.versionCode !== "number") {
+        $("#updateStatus").textContent = "업데이트 정보를 확인하지 못했습니다.";
+        return;
+      }
+      if (info.versionCode <= APP_VERSION_CODE) {
+        $("#updateStatus").textContent = "이미 최신 버전입니다 (v" + APP_VERSION_NAME + ")";
+        return;
+      }
+      pendingApkUrl = info.apkUrl;
+      $("#btnCheckUpdate").textContent = "새 버전(" + (info.versionName || info.versionCode) + ") 다운로드하기";
+      $("#updateStatus").textContent = "다시 눌러서 다운로드를 시작하세요.";
+    } catch (e) {
+      $("#updateStatus").textContent = "업데이트 확인에 실패했습니다. 네트워크를 확인해주세요.";
+    }
+  });
+
   function renderDriveStatus() {
     $("#driveEnabledToggle").checked = DriveBackup.isEnabled();
   }

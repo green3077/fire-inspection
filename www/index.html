@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>소방점검 관리</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="loginGate" class="login-gate hidden">
+  <div class="login-box">
+    <h1><span class="brand-main login-brand-main">소방점검</span><span class="brand-sub login-brand-sub">관리</span></h1>
+    <div class="field"><span>아이디</span><input type="text" id="loginUsername" autocomplete="username"></div>
+    <div class="field"><span>비밀번호</span><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div id="loginError" class="login-error hidden">아이디 또는 비밀번호가 올바르지 않습니다.</div>
+    <button class="btn btn-primary btn-large" id="btnLogin" type="button">로그인</button>
+  </div>
+</div>
+<header class="app-header" id="appHeader">
+  <button class="header-btn header-btn-back" id="btnHeaderBack" type="button">← 뒤로</button>
+  <h1 id="appHeaderTitle"><span class="brand-main">소방점검</span><span class="brand-sub">관리</span></h1>
+  <button class="header-btn header-btn-home" id="btnHeaderHome" type="button">처음으로</button>
+</header>
+
+<div id="toastContainer" class="toast-container no-print"></div>
+
+<div id="confirmModal" class="modal-overlay hidden no-print">
+  <div class="modal-box">
+    <div id="confirmMessage" class="modal-message"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="confirmCancelBtn">취소</button>
+      <button class="btn btn-primary" id="confirmOkBtn">확인</button>
+    </div>
+  </div>
+</div>
+
+<div id="shareFormatModal" class="modal-overlay hidden no-print">
+  <div class="modal-box">
+    <div class="modal-message">어떤 형식으로 공유할까요?</div>
+    <div class="modal-actions modal-actions-col">
+      <button class="btn btn-primary" id="shareFormatPdfBtn">PDF로 공유</button>
+      <button class="btn btn-primary" id="shareFormatHwpxBtn">한글(HWPX)로 공유</button>
+      <button class="btn btn-secondary" id="shareFormatCancelBtn">취소</button>
+    </div>
+  </div>
+</div>
+
+<div id="photoViewerModal" class="photo-viewer-overlay hidden no-print">
+  <button class="photo-viewer-close" id="btnClosePhotoViewer" type="button">×</button>
+  <button class="photo-viewer-nav photo-viewer-prev" id="btnPhotoViewerPrev" type="button">‹</button>
+  <img id="photoViewerImg" class="photo-viewer-img" alt="">
+  <button class="photo-viewer-nav photo-viewer-next" id="btnPhotoViewerNext" type="button">›</button>
+  <div class="photo-viewer-actions">
+    <button class="btn btn-danger hidden" id="btnDeleteViewerPhoto" type="button">삭제</button>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- 홈 (첫 화면) -->
+  <section id="screen-home" class="screen home-screen">
+    <div class="home-grid">
+      <button class="home-tile" id="btnHomeAddSite">
+        <span class="home-tile-icon">🏢</span>
+        <span class="home-tile-label">거래처 등록</span>
+      </button>
+      <button class="home-tile" id="btnHomeViewSites">
+        <span class="home-tile-icon">📋</span>
+        <span class="home-tile-label">거래처 보기</span>
+      </button>
+      <button class="home-tile" id="btnHomeConstructionTeam">
+        <span class="home-tile-icon">🔧</span>
+        <span class="home-tile-label">공사팀</span>
+      </button>
+      <button class="home-tile" id="btnHomeInspectionTeam">
+        <span class="home-tile-icon">🛡️</span>
+        <span class="home-tile-label">점검팀</span>
+      </button>
+      <button class="home-tile home-tile-wide" id="btnHomeScheduleManage">
+        <span class="home-tile-icon">🗓️</span>
+        <span class="home-tile-label">스케줄 관리</span>
+      </button>
+    </div>
+
+    <div class="home-todo-card">
+      <div class="home-todo-header">
+        <span class="home-todo-title">오늘의 주요 할일</span>
+        <span class="home-todo-date" id="homeTodoDate"></span>
+      </div>
+      <div id="homeTodoList"></div>
+    </div>
+    <div id="appVersionTag" class="app-version-tag"></div>
+  </section>
+
+  <!-- 공사팀: 업체 목록 -->
+  <section id="screen-construction-team" class="screen">
+    <div class="card">
+      <h2>🔧 공사팀</h2>
+      <div class="hint-text">업체를 선택하면 견적서와 공사내역을 관리할 수 있습니다.</div>
+    </div>
+    <div id="constructionTeamList"></div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionTeam">← 홈으로</button>
+  </section>
+
+  <!-- 공사팀: 업체 상세 메뉴 -->
+  <section id="screen-construction-company" class="screen">
+    <div class="card">
+      <h2 id="constructionCompanyName"></h2>
+      <div class="hint-text" id="constructionCompanyAddress"></div>
+    </div>
+    <button class="btn btn-primary btn-large" id="btnConstructionEstimates">📄 견적서</button>
+    <button class="btn btn-primary btn-large" id="btnConstructionHistory">🛠️ 공사내역</button>
+    <button class="btn btn-secondary" id="btnBackFromConstructionCompany">← 업체 목록으로</button>
+  </section>
+
+  <!-- 공사팀: 견적서 (준비중) -->
+  <section id="screen-construction-estimates" class="screen">
+    <div class="card">
+      <h2>📄 <span id="constructionEstimatesCompanyName"></span> · 견적서</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionEstimates">← 뒤로</button>
+  </section>
+
+  <!-- 공사팀: 공사내역 (준비중) -->
+  <section id="screen-construction-history" class="screen">
+    <div class="card">
+      <h2>🛠️ <span id="constructionHistoryCompanyName"></span> · 공사내역</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromConstructionHistory">← 뒤로</button>
+  </section>
+
+  <!-- 점검팀 (준비중) -->
+  <section id="screen-inspection-team" class="screen">
+    <div class="card">
+      <h2>🛡️ 점검팀</h2>
+      <div class="empty-state">준비중입니다.<br>곧 만나요!</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromInspectionTeam">← 홈으로</button>
+  </section>
+
+  <!-- 거래처 등록 방법 선택 -->
+  <section id="screen-site-entry-choice" class="screen">
+    <div class="card">
+      <h2>거래처 등록</h2>
+      <div class="hint-text">직접 입력하거나, 가지고 있는 자료(엑셀·워드·PDF·한글·사진)에서 정보를 자동으로 불러올 수 있습니다.</div>
+    </div>
+    <button class="btn btn-primary btn-large" id="btnEntryManual">✏️ 직접 입력</button>
+    <button class="btn btn-secondary btn-large" id="btnEntryImport">📎 자료 불러오기</button>
+    <button class="btn btn-secondary" id="btnCancelEntryChoice">← 취소</button>
+  </section>
+
+  <!-- 현장 목록 -->
+  <section id="screen-sites" class="screen">
+    <div class="section-actions">
+      <button class="btn btn-primary" id="btnAddSite">+ 현장 추가</button>
+    </div>
+    <div class="sort-toolbar">
+      <button class="sort-btn active" id="btnSortByName">가나다순</button>
+      <button class="sort-btn" id="btnSortByRegion">지역별</button>
+    </div>
+    <div id="sitesSummary" class="sites-summary"></div>
+    <div id="sitesList"></div>
+  </section>
+
+  <!-- 현장 등록/수정 -->
+  <section id="screen-site-form" class="screen">
+    <div class="card">
+      <div class="site-form-title-row">
+        <h2 id="siteFormTitle">현장 추가</h2>
+        <div class="comprehensive-toggle">
+          <button type="button" class="comp-toggle-btn" id="btnCompTargetYes">종합점검대상</button>
+          <button type="button" class="comp-toggle-btn" id="btnCompTargetNo">종합점검 해당없음</button>
+        </div>
+      </div>
+      <div id="importSummary" class="hint-text hidden"></div>
+      <div class="field"><span>현장명(거래처명) *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
+      <div class="field"><span>주소</span><input type="text" id="siteAddress" placeholder="예: 서울시 강남구 ..."></div>
+      <button class="btn btn-secondary" id="btnLookupBldReg" type="button">🏢 건축물대장 조회</button>
+      <div id="bldRegResult" class="bldreg-result hidden"></div>
+      <div class="field-row">
+        <div class="field"><span>관할소방서 (관할119안전센터)</span><input type="text" id="siteFireStation" placeholder="건축물대장 조회시 입력됩니다" readonly></div>
+        <div class="field"><span>관할119안전센터</span><input type="text" id="siteStation119" placeholder="직접 입력해주세요"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>담당자명</span><input type="text" id="siteContactName"></div>
+        <div class="field"><span>담당자 연락처</span><input type="text" id="siteContactPhone" placeholder="010-0000-0000"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>건물 용도</span><input type="text" id="siteBuildingType" placeholder="예: 근린생활시설"></div>
+        <div class="field"><span>연면적(㎡)</span><input type="text" id="siteArea" inputmode="decimal"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>층수(지상/지하)</span><input type="text" id="siteFloorInfo" placeholder="예: 지상 6층/지하 1층"></div>
+        <div class="field"><span>사용승인일</span><input type="text" id="siteApprovalDate" placeholder="예: 2010-05-01"></div>
+      </div>
+      <div class="field"><span>구조</span><input type="text" id="siteStructure" placeholder="예: 철근콘크리트구조"></div>
+
+      <h2 class="list-heading">소방안전관리자</h2>
+      <div class="field-row">
+        <div class="field"><span>성명</span><input type="text" id="siteFireManagerName"></div>
+        <div class="field"><span>연락처</span><input type="text" id="siteFireManagerPhone" placeholder="010-0000-0000"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>선임일자</span><input type="text" id="siteFireManagerAppointDate" placeholder="예: 2024-01-01"></div>
+        <div class="field"><span>교육일자</span><input type="text" id="siteFireManagerEduDate" placeholder="예: 2024-03-01"></div>
+      </div>
+
+      <h2 class="list-heading">담당기사</h2>
+      <div class="field-row">
+        <div class="field"><span>성명</span><input type="text" id="siteEngineerName"></div>
+        <div class="field"><span>연락처</span><input type="text" id="siteEngineerPhone" placeholder="010-0000-0000"></div>
+      </div>
+
+      <div class="field"><span>비고</span><textarea id="siteNotes" rows="3"></textarea></div>
+
+      <h2 class="list-heading">소방설비 위치</h2>
+      <div class="field"><span>수신기 위치</span><input type="text" id="siteReceiverLocation" placeholder="예: 1층 방재실"></div>
+      <div class="field"><span>수신기 접근방법</span><textarea id="siteReceiverAccess" rows="2" placeholder="예: 정문 출입 후 좌측 계단으로 지하1층"></textarea></div>
+      <div class="field"><span>펌프실 위치</span><input type="text" id="sitePumpRoomLocation" placeholder="예: 지하 1층 기계실"></div>
+      <div class="field"><span>펌프실 접근방법</span><textarea id="sitePumpRoomAccess" rows="2"></textarea></div>
+      <div class="field"><span>메모</span><textarea id="siteEquipmentMemo" rows="3" placeholder="소방설비 관련 추가 메모"></textarea></div>
+
+      <h2 class="list-heading">추가 자료</h2>
+      <div id="siteAttachmentsList"></div>
+      <button class="btn btn-secondary" id="btnUploadAttachment" type="button">📎 자료 업로드</button>
+      <input type="file" id="attachmentInput" multiple class="hidden">
+
+      <button class="btn btn-primary" id="btnSaveSite">저장</button>
+      <button class="btn btn-secondary" id="btnCancelSiteForm">취소</button>
+    </div>
+  </section>
+
+  <!-- 현장 상세 -->
+  <section id="screen-site-detail" class="screen">
+    <div class="card" id="siteDetailInfo"></div>
+    <div class="section-actions site-gallery-actions">
+      <button class="btn btn-primary" id="btnOpenSiteGallery">📷 현장점검 사진</button>
+      <button class="btn btn-secondary" id="btnOpenDeficiencyGallery">🔧 지적사항 사진</button>
+    </div>
+    <h2 class="list-heading">점검 이력</h2>
+    <div id="siteInspectionsList"></div>
+    <div id="siteChangeHistorySection" class="hidden">
+      <h2 class="list-heading">변경이력</h2>
+      <div id="siteChangeHistoryList"></div>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-secondary" id="btnEditSite">현장 정보 수정</button>
+      <button class="btn btn-danger" id="btnDeleteSite">현장 삭제</button>
+    </div>
+    <button class="btn btn-secondary" id="btnBackToSites">← 목록으로</button>
+  </section>
+
+  <!-- 사진 갤러리 (현장점검 사진 / 지적사항 사진 공용) -->
+  <section id="screen-photo-gallery" class="screen">
+    <div class="card">
+      <h2 id="galleryTitle"></h2>
+      <div class="hint-text" id="galleryHint"></div>
+    </div>
+    <div class="gallery-toolbar">
+      <button class="btn btn-secondary" id="btnGalleryUpload">＋ 사진 추가</button>
+      <input type="file" id="galleryUploadInput" accept="image/*" multiple class="hidden">
+      <button class="btn btn-secondary" id="btnGallerySelectAll">전체 선택</button>
+      <button class="btn btn-primary" id="btnGalleryShare" disabled>선택한 사진 공유</button>
+    </div>
+    <div id="galleryGrid" class="gallery-grid"></div>
+    <button class="btn btn-primary btn-large" id="btnCompleteSiteVisit">✅ 방문 완료 처리</button>
+    <button class="btn btn-secondary" id="btnBackFromGallery">← 목록으로</button>
+  </section>
+
+  <!-- 지적사항 전체 관리 (업체별) -->
+  <section id="screen-deficiency-hub" class="screen">
+    <div class="card">
+      <h2>지적사항 / 이행완료 관리</h2>
+      <div class="hint-text">현장(업체)을 선택하면 그 현장의 지적사항을 한곳에서 관리할 수 있습니다.</div>
+    </div>
+    <div id="deficiencyHubList"></div>
+  </section>
+
+  <!-- 지적사항 관리 -->
+  <section id="screen-deficiencies" class="screen">
+    <div class="card" id="deficiencyHeader"></div>
+    <div class="section-actions deficiency-toolbar">
+      <button class="btn btn-primary" id="btnAddDeficiency">+ 직접 추가</button>
+      <button class="btn btn-secondary" id="btnImportData">📎 지적사항 자료 올리기</button>
+    </div>
+    <div id="deficienciesList"></div>
+    <button class="btn btn-primary btn-large" id="btnGenerateCompletionReport">이행완료 보고서 생성</button>
+    <button class="btn btn-secondary" id="btnBackFromDeficiencies">← 뒤로</button>
+  </section>
+
+  <!-- 이행완료 보고서 -->
+  <section id="screen-completion-report" class="screen">
+    <div class="report-toolbar no-print">
+      <button class="btn btn-secondary" id="btnBackFromCompletionReport">← 목록으로</button>
+      <button class="btn btn-primary" id="btnPrintCompletionReport">인쇄 / PDF 저장</button>
+      <button class="btn btn-secondary" id="btnDownloadCompletionHwpx">한글(HWPX) 다운로드</button>
+      <button class="btn btn-secondary" id="btnShareCompletionReport">공유</button>
+    </div>
+    <div id="completionReportContent"></div>
+    <div class="report-pager no-print" id="completionReportPager">
+      <button class="btn btn-secondary" id="btnCompletionPrevPage">◀ 이전</button>
+      <span id="completionPageIndicator">1 / 1</span>
+      <button class="btn btn-secondary" id="btnCompletionNextPage">다음 ▶</button>
+    </div>
+  </section>
+
+  <!-- 일정관리 -->
+  <section id="screen-route" class="screen">
+    <div class="card">
+      <h2>일정관리</h2>
+      <div class="hint-text">예정된 점검을 날짜별로 모아 보여줍니다. 날짜를 누르면 아래에서 해당 날짜의 방문 현장과 동선을 확인할 수 있습니다.</div>
+    </div>
+    <div id="scheduleAgenda"></div>
+    <div class="card">
+      <h2>날짜별 상세 / 동선</h2>
+      <div class="field"><span>날짜</span><input type="date" id="routeDate"></div>
+    </div>
+    <div id="routeList"></div>
+    <button class="btn btn-primary btn-large" id="btnOpenGoogleRoute">🗺️ 구글 지도로 동선 보기</button>
+    <div class="hint-text">사무실을 출발지로, 선택한 날짜의 방문 현장을 목적지로 구글 지도 경로가 열립니다. 목적지가 3곳 이상이면 구글 지도 화면에서 '경로 최적화'를 켜면 자동으로 최단 순서로 정렬됩니다.</div>
+  </section>
+
+  <!-- 스케줄 관리 (날짜별 방문 예정/확정 업체) -->
+  <section id="screen-schedule-manage" class="screen">
+    <div class="card">
+      <h2>스케줄 관리</h2>
+      <div class="hint-text">달력에서 날짜를 누른 뒤, 업체 목록에서 방문할 업체를 선택하고 "확인"을 누르면 예정으로 등록됩니다. 전화로 방문이 확정되면 "일정 확정" 버튼을 누르세요.</div>
+    </div>
+    <div class="schedule-layout">
+      <div class="schedule-calendar-panel">
+        <div class="schedule-calendar-header">
+          <button class="btn-cal-nav" id="btnSchedulePrevMonth" type="button">‹</button>
+          <span id="scheduleMonthLabel"></span>
+          <button class="btn-cal-nav" id="btnScheduleNextMonth" type="button">›</button>
+        </div>
+        <div class="schedule-calendar-weekdays">
+          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+        <div id="scheduleCalendarGrid" class="schedule-calendar-grid"></div>
+        <div class="schedule-legend">
+          <span class="schedule-legend-item"><span class="schedule-legend-dot"></span>예정</span>
+          <span class="schedule-legend-item"><span class="schedule-legend-dot schedule-legend-dot-confirmed"></span>확정</span>
+        </div>
+      </div>
+      <div class="schedule-company-panel">
+        <div class="schedule-selected-date" id="scheduleSelectedDateLabel"></div>
+        <div id="scheduleDayCompanyList" class="schedule-day-company-list"></div>
+        <button class="btn btn-primary" id="btnScheduleConfirm">✅ 일정 확정</button>
+        <button class="btn btn-secondary hidden" id="btnScheduleUnconfirm">확정 취소</button>
+        <div class="list-heading">업체 선택</div>
+        <input type="text" id="scheduleCompanySearch" class="schedule-company-search" placeholder="업체 검색">
+        <div id="scheduleCompanyPickList" class="schedule-company-pick-list"></div>
+        <button class="btn btn-primary btn-large" id="btnScheduleAddCompanies">✔️ 확인 (예정으로 등록)</button>
+      </div>
+    </div>
+    <button class="btn btn-secondary" id="btnBackFromScheduleManage">← 홈으로</button>
+  </section>
+
+  <!-- 설정 -->
+  <section id="screen-settings" class="screen">
+    <div class="card">
+      <h2>📱 앱 버전 / 업데이트</h2>
+      <p id="appVersionText" class="hint-text"></p>
+      <button id="btnCheckUpdate" class="btn btn-secondary">업데이트 확인</button>
+      <p id="updateStatus" class="status-text"></p>
+    </div>
+    <div class="card">
+      <h2>사용자 / 업체 정보</h2>
+      <div class="field"><span>업체명</span><input type="text" id="companyName"></div>
+      <div class="field"><span>출발 주소 (사무실)</span><input type="text" id="companyAddress"></div>
+      <div class="field-row">
+        <div class="field"><span>연락처</span><input type="text" id="companyPhone" placeholder="010-0000-0000"></div>
+        <div class="field"><span>대표이사</span><input type="text" id="companyCeo" placeholder="예: 홍길동"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><span>사업자 등록번호</span><input type="text" id="companyBizRegNo" placeholder="000-00-00000"></div>
+        <div class="field"><span>면허번호</span><input type="text" id="companyLicenseNo" placeholder="소방시설관리업 등록번호"></div>
+      </div>
+      <button class="btn btn-secondary" id="btnSaveCompany">저장</button>
+    </div>
+    <div class="card">
+      <h2>🤖 AI 자동 인식</h2>
+      <div class="hint-text">파일(PDF·엑셀·워드·한글·HWPX·사진)을 업로드할 때 AI가 내용을 분석해서 입력칸에 자동으로 채워줍니다. 별도 로그인/키 입력 없이 항상 동작하며, 끄면 기존 방식(자체 인식)으로만 동작합니다.</div>
+      <label class="setting-toggle-row">
+        <input type="checkbox" id="aiEnabledToggle">
+        <span>AI 자동 인식 사용</span>
+      </label>
+    </div>
+    <div class="card">
+      <h2>건축물대장 조회 API 키</h2>
+      <div class="hint-text">주소 입력만으로 건축물대장을 자동 조회하려면 무료 API 키 2개가 필요합니다. 각 사이트에서 본인 명의로 발급받아 아래에 입력하세요 (승인은 보통 즉시~수분).</div>
+      <div class="field"><span>도로명주소 API 키 (juso.go.kr)</span><input type="text" id="jusoApiKey" placeholder="business.juso.go.kr에서 발급"></div>
+      <div class="field"><span>공공데이터포털 건축물대장 인증키 (data.go.kr)</span><input type="text" id="dataGoKrApiKey" placeholder="건축물대장정보 서비스 활용신청 후 발급"></div>
+      <button class="btn btn-secondary" id="btnSaveApiKeys">API 키 저장</button>
+    </div>
+    <div class="card">
+      <h2>☁️ 구글 드라이브 자동 저장</h2>
+      <div class="hint-text">업로드하는 자료(거래처 등록 파일, 지적사항 자료, 사진, 첨부파일)와 생성되는 이행완료보고서가 회사 구글 드라이브의 "조은소방_자동저장" 폴더에 현장별로 자동 저장됩니다. 별도 로그인 없이, 이 앱을 사용하는 누구의 업로드든 같은 곳에 모입니다.</div>
+      <label class="setting-toggle-row">
+        <input type="checkbox" id="driveEnabledToggle">
+        <span>자동 저장 사용</span>
+      </label>
+    </div>
+    <div class="card" id="authSettingsCard">
+      <h2>🔒 로그인 계정</h2>
+      <div class="hint-text">이 자료(거래처·점검기록·지적사항·스케줄)는 로그인한 사람 누구나 함께 보고 입력할 수 있는 공용 자료입니다.</div>
+      <div class="field"><span>현재 로그인</span><span id="authCurrentUser" class="field-static"></span></div>
+      <button class="btn btn-secondary" id="btnAuthLogout">로그아웃</button>
+    </div>
+  </section>
+
+</div>
+
+<nav class="tab-bar no-print">
+  <button class="tab-btn" data-tab="screen-deficiency-hub">📌 지적사항</button>
+  <button class="tab-btn" data-tab="screen-sites">📋 거래처보기</button>
+  <button class="tab-btn" data-tab="screen-route">🗓️ 일정관리</button>
+  <button class="tab-btn" data-tab="screen-settings">⚙️ 설정</button>
+</nav>
+
+<input type="file" id="dataImportInput" accept=".xlsx,.xls,.docx,.pdf,.hwpx,.hwp,.jpg,.jpeg,.png,.webp,.bmp" class="hidden">
+<input type="file" id="clientImportInput" accept=".xlsx,.xls,.docx,.pdf,.hwpx,.hwp,.jpg,.jpeg,.png,.webp,.bmp" class="hidden">
+<datalist id="categoryList"></datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="version.js"></script>
+<script src="auth.js"></script>
+<script src="db.js"></script>
+<script src="ui.js"></script>
+<script src="import.js"></script>
+<script src="client-import.js"></script>
+<script src="bldreg.js"></script>
+<script src="ai-fill.js"></script>
+<script src="hwpx-export.js"></script>
+<script src="drive.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
