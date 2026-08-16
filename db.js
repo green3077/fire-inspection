@@ -235,6 +235,10 @@ const FireDB = (() => {
       if (!existing) return null;
       return put(STORES.schedules, { ...existing, siteIds: existing.siteIds.filter((id) => id !== siteId) });
     },
+    async setScheduleSiteIds(date, siteIds) {
+      const existing = await get(STORES.schedules, date);
+      return put(STORES.schedules, { id: date, siteIds: [...siteIds], confirmed: existing ? existing.confirmed : false });
+    },
     async setScheduleConfirmed(date, confirmed) {
       const existing = await get(STORES.schedules, date);
       if (!existing) return null;

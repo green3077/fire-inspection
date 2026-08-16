@@ -327,7 +327,7 @@
   <section id="screen-schedule-manage" class="screen">
     <div class="card">
       <h2>스케줄 관리</h2>
-      <div class="hint-text">달력에서 날짜를 누른 뒤, 오른쪽 업체 목록에서 업체를 누르면 그 날짜의 방문 업체로 추가됩니다. 전화로 방문이 확정되면 "일정 확정" 버튼을 누르세요.</div>
+      <div class="hint-text">달력에서 날짜를 누른 뒤, 업체 목록에서 방문할 업체를 선택하고 "확인"을 누르면 예정으로 등록됩니다. 전화로 방문이 확정되면 "일정 확정" 버튼을 누르세요.</div>
     </div>
     <div class="schedule-layout">
       <div class="schedule-calendar-panel">
@@ -353,6 +353,7 @@
         <div class="list-heading">업체 선택</div>
         <input type="text" id="scheduleCompanySearch" class="schedule-company-search" placeholder="업체 검색">
         <div id="scheduleCompanyPickList" class="schedule-company-pick-list"></div>
+        <button class="btn btn-primary btn-large" id="btnScheduleAddCompanies">✔️ 확인 (예정으로 등록)</button>
       </div>
     </div>
     <button class="btn btn-secondary" id="btnBackFromScheduleManage">← 홈으로</button>

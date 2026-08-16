@@ -11,6 +11,7 @@
   let scheduleCalDate = new Date();   // 스케줄 관리 달력이 보여주는 월
   let scheduleSelectedDate = "";      // 스케줄 관리에서 선택된 날짜 (YYYY-MM-DD)
   let scheduleCompanySearchTerm = ""; // 스케줄 관리 업체 선택 목록 검색어
+  let scheduleStagedIds = new Set();  // 업체 선택 화면에서 "확인"을 누르기 전까지 임시로 체크된 업체 (저장 전)
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -247,8 +248,7 @@
   $("#btnHomeInspectionTeam").addEventListener("click", () => showScreen("screen-inspection-team"));
   $("#btnHomeScheduleManage").addEventListener("click", async () => {
     scheduleCalDate = new Date();
-    scheduleSelectedDate = todayISO();
-    await refreshScheduleManage();
+    await selectScheduleDate(todayISO());
     showScreen("screen-schedule-manage");
   });
   $("#btnBackFromScheduleManage").addEventListener("click", goHome);
@@ -2012,11 +2012,17 @@
     }
     $("#scheduleCalendarGrid").innerHTML = cellsHtml;
     $$("#scheduleCalendarGrid .schedule-day-cell:not(.is-empty)").forEach((el) => {
-      el.addEventListener("click", async () => {
-        scheduleSelectedDate = el.dataset.date;
-        await refreshScheduleManage();
-      });
+      el.addEventListener("click", () => selectScheduleDate(el.dataset.date));
     });
+  }
+
+  // 날짜를 선택할 때마다 그 날짜에 이미 저장된 업체 목록으로 "확인 전 임시 선택" 상태를 초기화한다 -
+  // 업체 선택 목록에서 체크만 해두고 아직 저장(확인)하지 않은 상태를 달력 이동 시 버리기 위함.
+  async function selectScheduleDate(date) {
+    scheduleSelectedDate = date;
+    const sched = await FireDB.getScheduleByDate(date);
+    scheduleStagedIds = new Set(sched ? sched.siteIds : []);
+    await refreshScheduleManage();
   }
 
   async function renderScheduleDayDetail() {
@@ -2031,7 +2037,7 @@
 
     const list = $("#scheduleDayCompanyList");
     if (siteIds.length === 0) {
-      list.innerHTML = `<div class="empty-state">아래 업체 목록에서 업체를 눌러 이 날짜에 추가하세요.</div>`;
+      list.innerHTML = `<div class="empty-state">아래 업체 목록에서 선택 후 "확인"을 누르면 여기에 표시됩니다.</div>`;
     } else {
       list.innerHTML = siteIds.map((id) => `
         <div class="schedule-day-company-chip">
@@ -2041,7 +2047,9 @@
       `).join("");
       $$("#scheduleDayCompanyList [data-remove]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          await FireDB.removeSiteFromSchedule(date, btn.dataset.remove);
+          const id = btn.dataset.remove;
+          await FireDB.removeSiteFromSchedule(date, id);
+          scheduleStagedIds.delete(id);
           await refreshScheduleManage();
           toast("삭제했습니다.");
         });
@@ -2052,9 +2060,10 @@
     $("#btnScheduleUnconfirm").classList.toggle("hidden", !confirmed);
   }
 
+  // 업체 선택 목록은 클릭 즉시 저장하지 않고 scheduleStagedIds(임시 체크 상태)만 바꾼다 -
+  // 실제로 그 날짜의 예정 업체로 저장되는 시점은 "확인" 버튼을 눌렀을 때뿐이다.
   async function renderScheduleCompanyPickList() {
-    const [sites, sched] = await Promise.all([FireDB.getAllSites(), FireDB.getScheduleByDate(scheduleSelectedDate)]);
-    const addedIds = new Set(sched ? sched.siteIds : []);
+    const sites = await FireDB.getAllSites();
     const term = scheduleCompanySearchTerm.trim();
     const filtered = (term ? sites.filter((s) => s.name.includes(term)) : sites)
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -2065,16 +2074,16 @@
       return;
     }
     list.innerHTML = filtered.map((s) => `
-      <div class="schedule-company-pick-row ${addedIds.has(s.id) ? "is-added" : ""}" data-id="${s.id}">
-        ${addedIds.has(s.id) ? "✅ " : ""}${escapeHtml(s.name)}
+      <div class="schedule-company-pick-row ${scheduleStagedIds.has(s.id) ? "is-added" : ""}" data-id="${s.id}">
+        ${scheduleStagedIds.has(s.id) ? "☑" : "☐"} ${escapeHtml(s.name)}
       </div>
     `).join("");
     $$("#scheduleCompanyPickList .schedule-company-pick-row").forEach((el) => {
-      el.addEventListener("click", async () => {
+      el.addEventListener("click", () => {
         const id = el.dataset.id;
-        if (addedIds.has(id)) await FireDB.removeSiteFromSchedule(scheduleSelectedDate, id);
-        else await FireDB.addSiteToSchedule(scheduleSelectedDate, id);
-        await refreshScheduleManage();
+        if (scheduleStagedIds.has(id)) scheduleStagedIds.delete(id);
+        else scheduleStagedIds.add(id);
+        renderScheduleCompanyPickList();
       });
     });
   }
@@ -2094,6 +2103,11 @@
   $("#scheduleCompanySearch").addEventListener("input", (e) => {
     scheduleCompanySearchTerm = e.target.value;
     renderScheduleCompanyPickList();
+  });
+  $("#btnScheduleAddCompanies").addEventListener("click", async () => {
+    await FireDB.setScheduleSiteIds(scheduleSelectedDate, Array.from(scheduleStagedIds));
+    await refreshScheduleManage();
+    toast("예정으로 등록되었습니다.");
   });
   $("#btnScheduleConfirm").addEventListener("click", async () => {
     await FireDB.setScheduleConfirmed(scheduleSelectedDate, true);
