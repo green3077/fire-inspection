@@ -1492,6 +1492,13 @@
     const def = findDeficiency(defId);
     const targetArr = role === "before" ? def.beforePhotoIds : def.afterPhotoIds;
     for (const file of files) {
+      // 파일 선택창의 accept="image/*"는 SVG(아이콘/그림 파일)도 걸러내지 못한다 - 벡터 이미지는
+      // 절대 실제 현장 사진이 아니므로, 여기서 거르지 않으면 보고서에 그대로(비정상적으로 확대되어)
+      // 들어가버린다(실제 사용자가 겪은 문제).
+      if (file.type === "image/svg+xml") {
+        toast("아이콘/그림 파일(SVG)은 사진으로 등록할 수 없습니다. 실제 사진 파일을 선택해주세요.", "error");
+        continue;
+      }
       const photo = await FireDB.addPhoto({
         siteId: currentDeficiencySiteId,
         itemId: def.id,
@@ -2086,8 +2093,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 21;
-  const APP_VERSION_NAME = "1.20";
+  const APP_VERSION_CODE = 22;
+  const APP_VERSION_NAME = "1.21";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가

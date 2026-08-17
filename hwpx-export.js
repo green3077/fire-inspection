@@ -282,6 +282,17 @@ const HwpxExport = (() => {
       return;
     }
 
+    // SVG(벡터 아이콘/그림)는 실제 현장 사진이 아니다 - <img>로 디코딩 자체는 되는 경우가 많아서
+    // (그래서 너비/높이 측정에는 성공) 아래 크기 계산 로직만으로는 걸러지지 않고, 원본이 아주 작은
+    // 아이콘 그림을 표 칸 크기까지 억지로 확대해 이상하게 보이는 원인이 된다(실제 사용자가 겪은
+    // 문제) - 업로드 시점(app.js)에서도 막지만, 과거에 이미 잘못 저장/백업된 사진을 위한 안전망.
+    if (blob.type === "image/svg+xml") {
+      const p = templatePara.cloneNode(true);
+      setParagraphText(p, "사진을 표시할 수 없습니다 (지원하지 않는 이미지 형식)", "47");
+      subList.appendChild(p);
+      return;
+    }
+
     let width, height, normalizedBlob;
     try {
       ({ blob: normalizedBlob, width, height } = await normalizeImagePhoto(blob, cellWidthHwp / cellHeightHwp));

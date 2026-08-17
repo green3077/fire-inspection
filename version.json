@@ -1,6 +1,6 @@
 {
-  "versionCode": 21,
-  "versionName": "1.20",
+  "versionCode": 22,
+  "versionName": "1.21",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "이행완료보고서(HWPX)에 엉뚱한(오래된) 사진이 들어가던 문제 수정 - 한 항목에 여러 장 올렸을 때 항상 가장 최근에 올린 사진이 들어가도록 개선"
+  "notes": "이행완료보고서(HWPX) 사진이 이상하게(아주 작게) 나오던 문제 수정 - 아이콘/그림(SVG) 파일이 사진으로 잘못 등록되지 않도록 방지, 실제 사진만 표에 꽉 차게 표시"
 }
