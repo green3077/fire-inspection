@@ -652,7 +652,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .bldreg-result .bldreg-error { color: var(--danger); font-size: 15px; line-height: 1.6; font-weight: 600; }
 
 /* 이행완료 보고서 */
-.completion-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; table-layout: fixed; }
+/* 좁은 화면(휴대폰)에서 width:100%만 있으면 표가 화면 폭에 억지로 맞춰지면서 칸이 너무 좁아져
+   한글 단어가 한 글자씩 세로로 쪼개져 나온다(가독성 최악) - min-width로 표의 실제 크기를 지켜주고,
+   화면보다 넓어지는 만큼은 #completionReportContent의 좌우 스크롤이 감당한다. */
+.completion-table { width: 100%; min-width: 640px; border-collapse: collapse; margin-bottom: 18px; table-layout: fixed; }
 .completion-table th, .completion-table td {
   border: 1px solid #000;
   padding: 8px 6px;
@@ -692,7 +695,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   text-align: center; font-size: 21.3px; font-weight: 800; color: #000; margin-bottom: 18px;
   font-family: "HY헤드라인M", "Malgun Gothic", "맑은 고딕", sans-serif;
 }
-.official-table { width: 100%; border-collapse: collapse; margin-bottom: 0; table-layout: fixed; }
+.official-table { width: 100%; min-width: 640px; border-collapse: collapse; margin-bottom: 0; table-layout: fixed; }
 .official-table.official-table-spaced { margin-top: 14px; }
 .official-table td {
   border: 1px solid #000; padding: 7px 6px; font-size: 13.3px; line-height: 1.55; vertical-align: middle;
@@ -728,6 +731,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   #app { max-width: 100%; }
   #completionReportContent { overflow-x: visible; }
   .official-form { min-width: 0; max-width: 100%; }
+  .completion-table, .official-table { min-width: 0; }
   .report-meta { background: #fff; border-color: #ccc; }
   .report-item-note { color: #444; }
   .label { color: #444; }

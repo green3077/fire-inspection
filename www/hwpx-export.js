@@ -213,7 +213,12 @@ const HwpxExport = (() => {
   // 정방향으로 그려주는 반면 한글(HWPX)은 이 태그를 무시하고 원본 바이트를 그대로 표시해 일부 사진이
   // 90도 돌아간 채 들어가는 원인이 된다. 화면에 보이는 그대로(회전 반영 완료) 새로 인코딩해 내보내면
   // 뷰어가 EXIF를 읽든 안 읽든 항상 올바른 방향으로 보인다.
-  async function normalizeImagePhoto(blob) {
+  //
+  // targetRatio(가로/세로)가 주어지면, 셀 비율에 맞춰 가운데를 기준으로 잘라낸다 - 사진 자체를
+  // 늘리거나 찌그러뜨리지 않고(비율 유지), 셀에 안 맞아 남는 여백만 없애서 표 칸에 꽉 차게 만든다.
+  // 이렇게 실제 픽셀 자체를 셀 비율로 미리 잘라두면, 뷰어 프로그램이 무엇이든(한글/타사 뷰어 모두)
+  // hp:sz만큼 그대로 그려도 항상 칸을 꽉 채운다 - 뷰어마다 크기 계산을 다르게 하는 문제에 기대지 않는다.
+  async function normalizeImagePhoto(blob, targetRatio) {
     const url = URL.createObjectURL(blob);
     try {
       const img = await new Promise((resolve, reject) => {
@@ -222,17 +227,30 @@ const HwpxExport = (() => {
         image.onerror = () => reject(new Error("image_decode_failed"));
         image.src = url;
       });
-      const width = img.naturalWidth;
-      const height = img.naturalHeight;
+      const srcW = img.naturalWidth;
+      const srcH = img.naturalHeight;
+      let cropX = 0, cropY = 0, cropW = srcW, cropH = srcH;
+      if (targetRatio) {
+        const srcRatio = srcW / srcH;
+        if (srcRatio > targetRatio) {
+          // 원본이 셀보다 가로로 더 넓다 - 좌우를 잘라낸다.
+          cropW = Math.round(srcH * targetRatio);
+          cropX = Math.round((srcW - cropW) / 2);
+        } else if (srcRatio < targetRatio) {
+          // 원본이 셀보다 세로로 더 길다 - 위아래를 잘라낸다.
+          cropH = Math.round(srcW / targetRatio);
+          cropY = Math.round((srcH - cropH) / 2);
+        }
+      }
       const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0);
+      canvas.width = cropW;
+      canvas.height = cropH;
+      canvas.getContext("2d").drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
       const outType = blob.type === "image/png" ? "image/png" : "image/jpeg";
       const outBlob = await new Promise((resolve, reject) => {
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_encode_failed"))), outType, 0.92);
       });
-      return { blob: outBlob, width, height };
+      return { blob: outBlob, width: cropW, height: cropH };
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -255,7 +273,7 @@ const HwpxExport = (() => {
 
     let width, height, normalizedBlob;
     try {
-      ({ blob: normalizedBlob, width, height } = await normalizeImagePhoto(blob));
+      ({ blob: normalizedBlob, width, height } = await normalizeImagePhoto(blob, cellWidthHwp / cellHeightHwp));
     } catch (err) {
       // HEIC(아이폰 기본 사진 형식) 등 브라우저가 디코딩하지 못하는 이미지가 섞여 있으면 크기를 잴 수 없다 -
       // 이 사진 한 장만 건너뛰고 나머지 보고서는 정상 생성한다.
