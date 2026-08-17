@@ -1,6 +1,6 @@
 {
-  "versionCode": 9,
-  "versionName": "1.8",
+  "versionCode": 10,
+  "versionName": "1.9",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "이행완료보고서 HWPX 사진이 표 칸에 꽉 차게 나오도록 수정, 모바일 화면 표 가독성 개선"
+  "notes": "카카오톡 등으로 공유 시 파일이 전송 안 되던 문제 수정 (MIME 타입을 정확히 지정하도록 변경)"
 }

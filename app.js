@@ -40,7 +40,12 @@
   // 네이티브 앱(APK) 안의 WebView는 Web Share API(navigator.share)를 지원하지 않는 경우가 많아
   // "공유" 버튼을 눌러도 아무 앱 선택 화면 없이 조용히 실패하거나 다운로드로만 대체됐다 - 안드로이드의
   // 진짜 공유 시트(어느 앱으로 보낼지 아이콘이 뜨는 화면)를 확실히 띄우려면 @capacitor/filesystem으로
-  // 파일을 앱 캐시에 저장한 뒤 그 파일의 uri를 @capacitor/share에 넘겨야 한다.
+  // 파일을 앱 캐시에 저장한 뒤 그 파일의 uri를 넘겨야 한다.
+  // 처음엔 @capacitor/share의 share()를 썼는데, 그 플러그인은 MIME 타입을 파일 확장자로 추측한다
+  // (MimeTypeMap.getMimeTypeFromExtension) - 안드로이드는 .hwpx 같은 비표준 확장자를 몰라서 항상
+  // "*/*"로 넘어가고, 카카오톡 등 일부 앱은 그렇게 애매한 타입으로 온 첨부를 사용자가 골라도 조용히
+  // 전송하지 않는다(실제 사용자가 겪은 문제: "카카오톡으로 전송이 안됨"). 그래서 확장자 추측에 기대지
+  // 않고 우리가 이미 알고 있는 정확한 MIME 타입을 직접 넘기는 자체 FileSaver.shareFiles를 쓴다.
   async function nativeShareFiles(blobsWithNames, title) {
     const uris = [];
     for (const { blob, name } of blobsWithNames) {
@@ -53,10 +58,12 @@
       });
       uris.push(result.uri);
     }
-    await callNativePlugin("Share", "share", {
+    const mimeType = (blobsWithNames[0] && blobsWithNames[0].blob.type) || "*/*";
+    await callNativePlugin("FileSaver", "shareFiles", {
+      uris,
+      mimeType,
       title,
       dialogTitle: "공유할 앱을 선택하세요",
-      files: uris,
     });
   }
   // "다운로드한 파일이 어디에 저장되는지 모르겠다"는 요청으로 추가 - 공유 화면과 달리 이건 다른 앱으로
@@ -1969,8 +1976,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 9;
-  const APP_VERSION_NAME = "1.8";
+  const APP_VERSION_CODE = 10;
+  const APP_VERSION_NAME = "1.9";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
