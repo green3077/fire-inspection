@@ -159,7 +159,16 @@ const HwpxExport = (() => {
 
   // hp:pic(그림 개체) 요소 - HWPFrame.HwpObject COM 자동화로 실제 한글이 그림을 삽입한 문서를 저장해
   // 얻은 진짜 예제 XML을 그대로 본떠 만들었다(요소 순서/네임스페이스가 실제와 정확히 일치해야 한글이 연다).
-  function buildPicElement(doc, binaryId, hwpWidth, hwpHeight) {
+  //
+  // hwpWidth/hwpHeight: 화면/표 칸에 실제로 그려질 "표시 크기"(hp:orgSz/curSz/sz, HWPUNIT 단위).
+  // pixelWidth/pixelHeight: 실제로 저장한 이미지 파일 자체의 픽셀 크기. 이 둘은 서로 다른 단위/의미인데,
+  // hc:img의 imgRect/hp:imgClip/hp:imgDim은 "이미지 파일 안에서 어느 픽셀 범위를 보여줄지"를 픽셀
+  // 좌표로 나타내는 필드라서 반드시 pixelWidth/pixelHeight를 써야 한다 - 예전 버전은 여기에도 표시
+  // 크기(hwpWidth/hwpHeight, 보통 수만 단위)를 그대로 넣는 실수가 있었다. 그러면 뷰어가 "이 이미지는
+  // 원래 20000x15000픽셀짜리"라고 잘못 믿고, 실제로는 훨씬 작은 이미지(예: 200x150픽셀)를 그 큰 좌표계의
+  // 극히 일부(왼쪽 위 모서리)로 해석해 심하게 확대/뭉개진 상태로 보여주는 원인이 된다 - 사용자가 겪은
+  // "사진이 확대되어 표시됨" 문제의 실제 원인.
+  function buildPicElement(doc, binaryId, hwpWidth, hwpHeight, pixelWidth, pixelHeight) {
     const picId = String(1000000000 + Math.floor(Math.random() * 900000000));
     const pic = el(doc, "hp:pic", {
       id: picId,
@@ -188,15 +197,17 @@ const HwpxExport = (() => {
     pic.appendChild(ri);
     // 실제 예제에서 그림 데이터 참조는 hp:img가 아니라 hc:img(core 네임스페이스)이다.
     pic.appendChild(hcEl(doc, "hc:img", { binaryItemIDRef: binaryId, bright: "0", contrast: "0", effect: "REAL_PIC", alpha: "0" }));
+    // 아래 세 요소는 표시 크기(hwpWidth/hwpHeight)가 아니라 실제 이미지 파일의 픽셀 크기를 써야 한다 -
+    // 위 함수 주석 참고.
     const imgRect = el(doc, "hp:imgRect", {});
     imgRect.appendChild(hcEl(doc, "hc:pt0", { x: "0", y: "0" }));
-    imgRect.appendChild(hcEl(doc, "hc:pt1", { x: String(hwpWidth), y: "0" }));
-    imgRect.appendChild(hcEl(doc, "hc:pt2", { x: String(hwpWidth), y: String(hwpHeight) }));
-    imgRect.appendChild(hcEl(doc, "hc:pt3", { x: "0", y: String(hwpHeight) }));
+    imgRect.appendChild(hcEl(doc, "hc:pt1", { x: String(pixelWidth), y: "0" }));
+    imgRect.appendChild(hcEl(doc, "hc:pt2", { x: String(pixelWidth), y: String(pixelHeight) }));
+    imgRect.appendChild(hcEl(doc, "hc:pt3", { x: "0", y: String(pixelHeight) }));
     pic.appendChild(imgRect);
-    pic.appendChild(el(doc, "hp:imgClip", { left: "0", right: String(hwpWidth), top: "0", bottom: String(hwpHeight) }));
+    pic.appendChild(el(doc, "hp:imgClip", { left: "0", right: String(pixelWidth), top: "0", bottom: String(pixelHeight) }));
     pic.appendChild(el(doc, "hp:inMargin", { left: "0", right: "0", top: "0", bottom: "0" }));
-    pic.appendChild(el(doc, "hp:imgDim", { dimwidth: String(hwpWidth), dimheight: String(hwpHeight) }));
+    pic.appendChild(el(doc, "hp:imgDim", { dimwidth: String(pixelWidth), dimheight: String(pixelHeight) }));
     pic.appendChild(el(doc, "hp:effects", {}));
     pic.appendChild(el(doc, "hp:sz", { width: String(hwpWidth), widthRelTo: "ABSOLUTE", height: String(hwpHeight), heightRelTo: "ABSOLUTE", protect: "0" }));
     // treatAsChar="1": 텍스트 흐름에 얹혀 셀 안에 들어가는 인라인 그림(표 밖으로 떠다니지 않음) - 실제 예제와 동일.
@@ -301,7 +312,7 @@ const HwpxExport = (() => {
     Array.from(p.getElementsByTagNameNS(HP, "run")).forEach((r) => r.remove());
     Array.from(p.getElementsByTagNameNS(HP, "linesegarray")).forEach((r) => r.remove());
     const run = el(doc, "hp:run", { charPrIDRef: "47" });
-    run.appendChild(buildPicElement(doc, binaryId, hwpWidth, hwpHeight));
+    run.appendChild(buildPicElement(doc, binaryId, hwpWidth, hwpHeight, width, height));
     p.appendChild(run);
     subList.appendChild(p);
   }
