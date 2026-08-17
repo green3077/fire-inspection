@@ -1,6 +1,6 @@
 {
-  "versionCode": 7,
-  "versionName": "1.6",
+  "versionCode": 8,
+  "versionName": "1.7",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "HWPX 다운로드가 안드로이드 '다운로드' 폴더에 실제로 저장되고 저장 위치를 알려주도록 개선, 저장/공유 진행 상태 표시 추가"
+  "notes": "다운로드 완료 후 어떤 프로그램으로 열지 선택하는 화면이 바로 뜨도록 추가"
 }

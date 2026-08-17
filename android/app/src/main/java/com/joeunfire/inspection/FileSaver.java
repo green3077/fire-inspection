@@ -2,10 +2,13 @@ package com.joeunfire.inspection;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.util.Base64;
+
+import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -23,6 +26,8 @@ import java.io.OutputStream;
 // 사용자가 파일 관리자 앱에서 "다운로드" 폴더를 열면 바로 보인다. 그보다 낮은 버전은 예전 방식대로
 // 공용 다운로드 폴더에 직접 쓴다(WRITE_EXTERNAL_STORAGE 권한 필요, 매니페스트에서 maxSdkVersion=28로
 // Android 10+에서는 아예 요청하지 않도록 제한).
+// 저장 직후 "어떤 프로그램으로 열지" 선택 화면(ACTION_VIEW + 앱 선택 chooser)도 바로 띄워준다 -
+// 파일이 잘 저장됐는지, 실제로 한글 프로그램 등에서 정상적으로 열리는지 그 자리에서 바로 확인할 수 있게.
 @CapacitorPlugin(name = "FileSaver")
 public class FileSaver extends Plugin {
     @PluginMethod
@@ -37,6 +42,7 @@ public class FileSaver extends Plugin {
         try {
             byte[] bytes = Base64.decode(base64Data, Base64.DEFAULT);
             String displayLocation;
+            Uri contentUri;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentResolver resolver = getContext().getContentResolver();
                 ContentValues values = new ContentValues();
@@ -56,6 +62,7 @@ public class FileSaver extends Plugin {
                 values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0);
                 resolver.update(item, values, null, null);
                 displayLocation = "다운로드 / " + filename;
+                contentUri = item;
             } else {
                 File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 if (!downloadsDir.exists()) downloadsDir.mkdirs();
@@ -64,12 +71,40 @@ public class FileSaver extends Plugin {
                     fos.write(bytes);
                 }
                 displayLocation = outFile.getAbsolutePath();
+                contentUri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", outFile);
             }
             JSObject ret = new JSObject();
             ret.put("location", displayLocation);
+            ret.put("uri", contentUri.toString());
+            ret.put("mimeType", mimeType);
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("파일 저장 실패: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openFile(PluginCall call) {
+        String uriStr = call.getString("uri");
+        String mimeType = call.getString("mimeType", "*/*");
+        if (uriStr == null) {
+            call.reject("uri가 필요합니다");
+            return;
+        }
+        try {
+            Uri uri = Uri.parse(uriStr);
+            Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+            viewIntent.setDataAndType(uri, mimeType);
+            viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent chooser = Intent.createChooser(viewIntent, "다음으로 열기");
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (android.content.ActivityNotFoundException e) {
+            call.reject("이 파일을 열 수 있는 앱이 설치되어 있지 않습니다");
+        } catch (Exception e) {
+            call.reject("파일 열기 실패: " + e.getMessage());
         }
     }
 }

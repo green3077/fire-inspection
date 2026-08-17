@@ -65,12 +65,22 @@
   // main/java/.../FileSaver.java) 사용.
   async function nativeSaveToDownloads(blob, filename, mimeType) {
     const base64 = await blobToBase64(blob);
-    const result = await callNativePlugin("FileSaver", "saveToDownloads", {
+    // { location, uri, mimeType } - uri는 저장 직후 "어떤 프로그램으로 열지" 선택 화면을 띄우는 데 쓴다.
+    return callNativePlugin("FileSaver", "saveToDownloads", {
       filename,
       data: base64,
       mimeType,
     });
-    return result.location;
+  }
+  // 저장된 파일이 실제로 정상 파일인지, 한글 등 원하는 프로그램에서 잘 열리는지 그 자리에서 바로
+  // 확인할 수 있도록 안드로이드의 "다음으로 열기" 앱 선택 화면을 띄운다. 열 수 있는 앱이 없어도
+  // (예: 한글 앱 미설치) 조용히 무시한다 - 파일은 이미 다운로드 폴더에 저장되어 있으므로 실패로 볼 일은 아니다.
+  async function nativeOfferToOpen(uri, mimeType) {
+    try {
+      await callNativePlugin("FileSaver", "openFile", { uri, mimeType });
+    } catch (e) {
+      // 열 앱이 없는 경우 등 - 파일 저장 자체는 이미 성공했으므로 조용히 넘어간다.
+    }
   }
 
   // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
@@ -1741,8 +1751,9 @@
       const filename = `이행완료보고서_${lastCompletionReportData.siteName}.hwpx`;
       if (isNativeApp()) {
         btn.textContent = "저장 중...";
-        const location = await nativeSaveToDownloads(blob, filename, "application/hwp+zip");
-        toast(`저장되었습니다: ${location}`, "success");
+        const saved = await nativeSaveToDownloads(blob, filename, "application/hwp+zip");
+        toast(`저장되었습니다: ${saved.location}`, "success");
+        await nativeOfferToOpen(saved.uri, saved.mimeType);
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1958,8 +1969,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 7;
-  const APP_VERSION_NAME = "1.6";
+  const APP_VERSION_CODE = 8;
+  const APP_VERSION_NAME = "1.7";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
