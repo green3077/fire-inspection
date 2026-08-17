@@ -85,6 +85,31 @@ public class FileSaver extends Plugin {
         }
     }
 
+    // .hwp/.hwpx는 IANA에 등록된 표준 MIME 타입이 없어 앱마다(한글, 폴라리스오피스 등) 서로 다른
+    // 값으로 인텐트 필터를 등록해 놓는다 - 우리가 지정한 mimeType(application/hwp+zip)과 정확히 같은
+    // 값을 등록한 앱이 없으면 ACTION_VIEW를 던져도 매칭되는 액티비티가 0개라, startActivity 자체는
+    // 예외 없이 "성공"하고 안드로이드 시스템이 우리 앱 밖에서 자체적으로 "작업을 수행할 수 있는
+    // 앱이 없습니다" 토스트만 띄운다(우리 catch로 절대 안 잡힘, 실제 사용자가 겪은 문제) - 그래서
+    // startActivity를 던지기 전에 PackageManager로 실제 매칭되는 앱이 있는지 먼저 확인하고, 없으면
+    // "*/*"(확장자 기반으로 열기를 지원하는 파일관리자/오피스 앱들이 흔히 잡음)로 한 번 더 확인한
+    // 뒤, 그래도 없으면 우리 앱 자체의 친절한 메시지로 실패시킨다.
+    private boolean hasHandler(Intent intent) {
+        return !getContext().getPackageManager().queryIntentActivities(intent, 0).isEmpty();
+    }
+
+    // hwpx는 IANA 표준이 없어 앱마다 인텐트 필터에 등록해 둔 값이 제각각이다(한컴 공식 스펙상
+    // "application/hwp+zip"이 맞지만, 실제 뷰어 앱들은 application/haansofthwpx,
+    // application/vnd.hancom.hwpx 등 다른 값을 쓰기도 한다) - Android의 인텐트 매칭은 정확히 일치하는
+    // 타입(또는 그 상위 와일드카드를 필터 쪽에 선언한 경우)만 잡으므로, 우리 쪽에서 "*/*"로 던진다고
+    // 구체적인 타입을 등록한 앱까지 다 잡히는 게 아니다 - 알려진 후보를 순서대로 실제 설치된 앱과
+    // 매칭되는지 확인해보고, 맨 마지막에만 "*/*"(제네릭 파일 뷰어/파일관리자용)로 시도한다.
+    private static final String[] HWPX_MIME_CANDIDATES = {
+        "application/hwp+zip",
+        "application/haansofthwpx",
+        "application/vnd.hancom.hwpx",
+        "application/x-hwpx"
+    };
+
     @PluginMethod
     public void openFile(PluginCall call) {
         String uriStr = call.getString("uri");
@@ -95,8 +120,29 @@ public class FileSaver extends Plugin {
         }
         try {
             Uri uri = Uri.parse(uriStr);
+            ArrayList<String> candidates = new ArrayList<>();
+            if ("application/hwp+zip".equals(mimeType)) {
+                for (String c : HWPX_MIME_CANDIDATES) candidates.add(c);
+            } else {
+                candidates.add(mimeType);
+            }
+            candidates.add("*/*");
+
+            String resolvedType = null;
+            Intent probe = new Intent(Intent.ACTION_VIEW);
+            for (String candidate : candidates) {
+                probe.setDataAndType(uri, candidate);
+                if (hasHandler(probe)) {
+                    resolvedType = candidate;
+                    break;
+                }
+            }
+            if (resolvedType == null) {
+                call.reject("이 파일을 열 수 있는 앱이 설치되어 있지 않습니다(한글 또는 오피스 앱을 설치해주세요)");
+                return;
+            }
             Intent viewIntent = new Intent(Intent.ACTION_VIEW);
-            viewIntent.setDataAndType(uri, mimeType);
+            viewIntent.setDataAndType(uri, resolvedType);
             viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             Intent chooser = Intent.createChooser(viewIntent, "다음으로 열기");

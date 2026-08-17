@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "1.16",
+  "versionCode": 18,
+  "versionName": "1.17",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "하단 메뉴가 모바일에서 두 줄로 보이던 문제 수정 (탭 5개가 한 줄에 들어오도록 글자 크기 조정)"
+  "notes": "한글(HWPX) 다운로드 후 '작업을 수행할 수 있는 앱이 없습니다' 오류 수정 - 설치된 한글/오피스 앱을 제대로 찾아서 열도록 개선"
 }

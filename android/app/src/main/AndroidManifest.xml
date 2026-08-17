@@ -29,6 +29,19 @@
         </provider>
     </application>
 
+    <!-- Android 11(API 30)+는 패키지 가시성 제한 때문에 여기 선언 안 된 인텐트는 실제로 처리할 수
+         있는 앱이 설치돼 있어도 PackageManager.queryIntentActivities()에 아예 안 보인다 - .hwp/.hwpx는
+         표준 MIME이 없어 앱마다 등록값이 달라서(한글, 폴라리스오피스 등) 정확히 어떤 값인지 알 수
+         없으므로, ACTION_VIEW + 모든 mimeType을 넓게 선언해서 "파일 열기" 관련 앱은 다 보이게 한다
+         (사이드로드 전용 앱이라 스토어 정책상 문제 없음). 이게 없으면 FileSaver.openFile()의
+         PackageManager 사전 확인이 실제로 앱이 있어도 항상 "없음"으로 잘못 판단한다. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
