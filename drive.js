@@ -88,6 +88,30 @@
     return res.json();
   }
 
+  // 사진/첨부파일은 기기별 IndexedDB에만 저장된다 - 다른 기기(예: 휴대폰으로 찍은 사진)에서 올린
+  // 사진은 이 기기 로컬에는 원본이 없다. uploadToSite가 저장할 때 쓰는 것과 똑같은 경로 규칙
+  // (siteName/category/filename)으로 이미 백업된 사본을 찾아 돌려준다 - 없으면(그 사진이 애초에
+  // 백업도 안 됐던 경우) null, 네트워크 실패 등은 조용히 무시(항상 non-throwing, 호출부가 그냥
+  // "로컬에도 없고 드라이브에도 없음"으로 처리하면 됨 - 기존 "사진 없음" 표시와 동일).
+  async function fetchFile(siteName, category, filename) {
+    try {
+      const params = new URLSearchParams({
+        action: "fetch-file",
+        siteName: sanitizeName(siteName || "미지정 현장"),
+        category,
+        filename: sanitizeName(filename),
+      });
+      const res = await fetch(`${PROXY_URL}?${params.toString()}`, {
+        headers: { "x-app-secret": APP_SECRET },
+      });
+      if (!res.ok) return null;
+      return await res.blob();
+    } catch (err) {
+      console.warn("[DriveBackup] fetchFile failed:", err);
+      return null;
+    }
+  }
+
   global.DriveBackup = {
     isEnabled,
     setEnabled,
@@ -96,5 +120,6 @@
     listBackups,
     downloadFile,
     uploadBackup,
+    fetchFile,
   };
 })(window);

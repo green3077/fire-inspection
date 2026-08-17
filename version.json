@@ -1,6 +1,6 @@
 {
-  "versionCode": 19,
-  "versionName": "1.18",
+  "versionCode": 20,
+  "versionName": "1.19",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "앱에서 보고서 목록을 못 불러오던 문제 수정(구글 드라이브 프록시 CORS), 하단 메뉴 글자 크기 확대"
+  "notes": "PC 등 사진을 촬영하지 않은 기기에서 이행완료보고서(HWPX) 생성 시 이행전/후 사진이 안 보이던 문제 수정 - 구글 드라이브에 백업된 사진을 자동으로 찾아 채움"
 }

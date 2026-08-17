@@ -1625,6 +1625,23 @@
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
 
+    // 사진은 기기별 IndexedDB에만 저장된다 - 휴대폰으로 찍어 올린 사진은 PC 등 다른 기기의
+    // 로컬 저장소엔 원본이 없어 여기서 빠질 수 있다(실제 사용자가 겪은 문제: "PC에서 이행완료보고서
+    // 만들면 텍스트는 나오는데 사진은 안 나옴"). 이미 구글 드라이브에 자동 백업된 사본이 있으면
+    // 그걸로 채운다 - 파일명 규칙은 backupToDrive가 지적사항 사진을 올릴 때 쓰는 것과 동일
+    // (이행전_<id>.jpg / 이행후_<id>.jpg). 둘 다에 없으면 기존과 동일하게 "사진 없음"으로 표시된다.
+    if (site && site.name) {
+      const missing = [];
+      resolved.forEach((def) => {
+        (def.beforePhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행전" }); });
+        (def.afterPhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행후" }); });
+      });
+      await Promise.all(missing.map(async ({ id, prefix }) => {
+        const blob = await DriveBackup.fetchFile(site.name, "지적사항_사진", `${prefix}_${id}.jpg`);
+        if (blob) photoMap.set(id, { id, blob });
+      }));
+    }
+
     function photoCellHtml(def, role) {
       const ids = role === "before" ? def.beforePhotoIds : def.afterPhotoIds;
       if (ids.length === 0) return `<div class="no-photo">사진 없음</div>`;
@@ -2069,8 +2086,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 19;
-  const APP_VERSION_NAME = "1.18";
+  const APP_VERSION_CODE = 20;
+  const APP_VERSION_NAME = "1.19";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
