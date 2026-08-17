@@ -231,7 +231,11 @@
 
   async function goHome() {
     showScreen("screen-home");
-    await renderHomeTodo();
+    try {
+      await renderHomeTodo();
+    } catch (err) {
+      toast((err && err.message) || "오늘의 할일을 불러오지 못했습니다.", "error");
+    }
   }
 
   $("#appHeaderTitle").addEventListener("click", goHome);
@@ -301,13 +305,18 @@
   $("#btnBackFromConstructionHistory").addEventListener("click", () => showScreen("screen-construction-company"));
 
   // ---------- 탭 ----------
+  // 자료를 불러오다 실패/시간초과되면(예: 불안정한 네트워크) 화면은 바뀌었는데 내용은 계속
+  // 비어있는 채로 남아 "눌러도 반응 없음"처럼 보일 수 있다 - 실패를 토스트로 반드시 보여준다.
+  function reportLoadFailure(err) {
+    toast((err && err.message) || "자료를 불러오지 못했습니다. 네트워크를 확인해주세요.", "error");
+  }
   $$(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
-      if (tab === "screen-deficiency-hub") renderDeficiencyHub();
-      if (tab === "screen-sites") renderSites();
-      if (tab === "screen-route") renderRoute();
-      if (tab === "screen-settings") renderSettings();
+      if (tab === "screen-deficiency-hub") renderDeficiencyHub().catch(reportLoadFailure);
+      if (tab === "screen-sites") renderSites().catch(reportLoadFailure);
+      if (tab === "screen-route") renderRoute().catch(reportLoadFailure);
+      if (tab === "screen-settings") renderSettings().catch(reportLoadFailure);
       showScreen(tab);
     });
   });
@@ -1860,8 +1869,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 3;
-  const APP_VERSION_NAME = "1.2";
+  const APP_VERSION_CODE = 4;
+  const APP_VERSION_NAME = "1.3";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   const UpdateBridge = IS_NATIVE_UPDATE ? window.Capacitor.registerPlugin("UpdateBridge") : null;
@@ -2167,11 +2176,12 @@
   const DEFICIENCY_CATEGORY_SUGGESTIONS = ["소화설비", "경보설비", "피난구조설비", "소화용수설비", "소화활동설비", "전기 및 기타"];
 
   function bootApp() {
+    $("#bootLoading").classList.add("hidden");
+    showScreen("screen-home");
     $("#categoryList").innerHTML = DEFICIENCY_CATEGORY_SUGGESTIONS.map((c) => `<option value="${escapeHtml(c)}">`).join("");
     $("#appVersionTag").textContent = typeof APP_VERSION !== "undefined" ? "v" + APP_VERSION : "";
-    renderSites();
-    showScreen("screen-home");
-    renderHomeTodo();
+    renderSites().catch(reportLoadFailure);
+    renderHomeTodo().catch(reportLoadFailure);
   }
 
   // 이제 모든 자료(거래처·점검기록·지적사항·스케줄)가 로그인한 사람만 읽고 쓸 수 있는 공용
@@ -2196,14 +2206,22 @@
   $("#loginUsername").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
   $("#loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptLogin(); });
 
-  Auth.onReady().then((loggedIn) => {
+  // Auth.onReady() 자체가 (알 수 없는 이유로) 끝없이 멈출 가능성까지 대비해, 20초 안에 응답이
+  // 없으면 로그인 화면으로 강제 전환한다 - "로딩 중" 표시만 영원히 뜨는 상황을 막기 위함.
+  const authReadyWithTimeout = Promise.race([
+    Auth.onReady(),
+    new Promise((resolve) => setTimeout(() => resolve(false), 20000)),
+  ]);
+  authReadyWithTimeout.then((loggedIn) => {
     if (loggedIn) {
       bootApp();
     } else {
+      $("#bootLoading").classList.add("hidden");
       $("#loginGate").classList.remove("hidden");
       $("#loginUsername").focus();
     }
   }).catch(() => {
+    $("#bootLoading").classList.add("hidden");
     $("#loginGate").classList.remove("hidden");
     $("#loginUsername").focus();
   });

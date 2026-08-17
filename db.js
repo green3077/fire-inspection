@@ -92,13 +92,24 @@ const FireDB = (() => {
     return firebase.database();
   }
 
+  // 일부 모바일 환경(불안정한 Wi-Fi, WebView의 소켓 연결 문제 등)에서는 Firebase의 실시간 연결이
+  // 붙지 못한 채 .once("value")가 성공도 실패도 하지 않고 영원히 멈출 수 있다 - 그러면 화면 전환은
+  // 되는데 내용은 하염없이 빈 채로 남아 "눌러도 반응 없음"처럼 보인다. 15초 안에 응답이 없으면
+  // 명확한 에러로 실패시켜서, 호출한 쪽이 최소한 에러 메시지를 보여줄 수 있게 한다.
+  function withTimeout(promise, label) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} 응답 시간 초과 (네트워크 확인 필요)`)), 15000)),
+    ]);
+  }
+
   async function fbGet(path) {
-    const snap = await rtdb().ref(path).once("value");
+    const snap = await withTimeout(rtdb().ref(path).once("value"), `fbGet(${path})`);
     return snap.exists() ? snap.val() : null;
   }
 
   async function fbGetAll(path) {
-    const snap = await rtdb().ref(path).once("value");
+    const snap = await withTimeout(rtdb().ref(path).once("value"), `fbGetAll(${path})`);
     const val = snap.val();
     return val ? Object.values(val) : [];
   }
@@ -130,7 +141,7 @@ const FireDB = (() => {
     return normalizeSchedule(date, await fbGet(`schedules/${date}`));
   }
   async function getAllSchedules() {
-    const snap = await rtdb().ref("schedules").once("value");
+    const snap = await withTimeout(rtdb().ref("schedules").once("value"), "getAllSchedules");
     const val = snap.val();
     if (!val) return [];
     return Object.keys(val).map((date) => normalizeSchedule(date, val[date]));
