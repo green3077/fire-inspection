@@ -1,6 +1,6 @@
 {
-  "versionCode": 18,
-  "versionName": "1.17",
+  "versionCode": 19,
+  "versionName": "1.18",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "한글(HWPX) 다운로드 후 '작업을 수행할 수 있는 앱이 없습니다' 오류 수정 - 설치된 한글/오피스 앱을 제대로 찾아서 열도록 개선"
+  "notes": "앱에서 보고서 목록을 못 불러오던 문제 수정(구글 드라이브 프록시 CORS), 하단 메뉴 글자 크기 확대"
 }
