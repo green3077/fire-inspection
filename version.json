@@ -1,6 +1,6 @@
 {
-  "versionCode": 16,
-  "versionName": "1.15",
+  "versionCode": 17,
+  "versionName": "1.16",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "안드로이드 뒤로가기 버튼이 이전화면으로 이동하도록 수정, 보고서 모아보기 메뉴 추가, 자료 백업/복구(구글 드라이브) 기능 추가, 앱 로고 변경"
+  "notes": "하단 메뉴가 모바일에서 두 줄로 보이던 문제 수정 (탭 5개가 한 줄에 들어오도록 글자 크기 조정)"
 }
