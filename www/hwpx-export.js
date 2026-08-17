@@ -353,13 +353,16 @@ const HwpxExport = (() => {
       lines.push(def.description || "");
       clearCellAndSetLines(contentTc, lines, "47");
 
-      // photoMap은 app.js에서 FireDB.getPhotosBySite() 결과를 id 기준으로 매핑한 것 - 값은 Blob이 아니라
-      // { id, siteId, itemId, role, blob, ... } 사진 레코드 전체이므로 .blob으로 꺼내 써야 한다.
-      // 사진은 기기별 로컬 저장이라(같은 항목의 사진을 다른 기기에서 추가로 올렸을 수 있음), 배열의
-      // 첫 번째 id를 무조건 쓰면 그 사진이 하필 다른 기기에서 올린 것일 때 이 기기엔 없어서 "사진 없음"으로
-      // 잘못 나온다 - 화면/PDF 미리보기(photoCellHtml)처럼 이 기기에 실제로 있는 첫 번째 사진을 찾아 쓴다.
-      const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).find(Boolean) || null;
-      const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).find(Boolean) || null;
+      // photoMap은 app.js에서 FireDB.getPhotosBySite() 결과(+구글 드라이브에서 보충한 것)를 id 기준으로
+      // 매핑한 것 - 값은 Blob이 아니라 { id, siteId, itemId, role, blob, ... } 사진 레코드 전체이므로
+      // .blob으로 꺼내 써야 한다. beforePhotoIds/afterPhotoIds는 촬영/업로드한 순서대로 뒤에 추가되므로
+      // (onDeficiencyPhotoSelected가 항상 push) 배열의 마지막 항목이 가장 최근에 올린 사진이다 - 한
+      // 칸에는 한 장만 넣을 수 있어 그 중 하나를 골라야 하는데, 가장 최근 것을 우선한다. 배열 앞쪽부터
+      // 찾으면(구글 드라이브 보충 이후로는 대부분의 id가 뭔가는 찾아지므로) 오래된 사진이 최신 사진을
+      // 밀어내고 채워지는 문제가 있었다(실제 사용자가 겪은 문제: "내가 올린 사진이 아니라 이상한
+      // 사진으로 채워짐") - 뒤에서부터 찾아 항상 가장 최근 것이 이기도록 한다.
+      const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
+      const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
       await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
       await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
 
