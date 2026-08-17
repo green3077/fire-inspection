@@ -320,6 +320,27 @@
     if (delegateId) $("#" + delegateId).click();
     else goHome();
   });
+
+  // ---------- 안드로이드 하드웨어 뒤로가기 버튼 ----------
+  // @capacitor/app 플러그인이 없으면 웹뷰 기본 동작(뒤로 갈 브라우저 히스토리가 없으면 그냥 앱 종료)이
+  // 그대로 발동해 어느 화면에서 눌러도 앱이 꺼져버렸다(실제 사용자가 겪은 문제) - 이 리스너가 화면
+  // 전환/모달 닫기로 대신 처리하고("← 뒤로" 헤더 버튼과 완전히 같은 경로, BACK_DELEGATE 재사용),
+  // 정말 홈 화면일 때만 실제 종료로 넘긴다.
+  if (isNativeApp() && window.Capacitor.addListener) {
+    window.Capacitor.addListener("App", "backButton", () => {
+      const openModal = $$(".modal-overlay:not(.hidden), .photo-viewer-overlay:not(.hidden)")[0];
+      if (openModal) {
+        const closeBtn = openModal.querySelector("#confirmCancelBtn, #shareFormatCancelBtn, #btnClosePhotoViewer");
+        if (closeBtn) { closeBtn.click(); return; }
+      }
+      const current = $(".screen.active");
+      if (current && current.id === "screen-home") {
+        callNativePlugin("App", "exitApp", {});
+        return;
+      }
+      $("#btnHeaderBack").click();
+    });
+  }
   $("#btnHomeAddSite").addEventListener("click", () => $("#btnAddSite").click());
   $("#btnHomeViewSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
   $("#btnHomeConstructionTeam").addEventListener("click", () => { renderConstructionTeam(); showScreen("screen-construction-team"); });
@@ -388,6 +409,7 @@
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
       if (tab === "screen-deficiency-hub") renderDeficiencyHub().catch(reportLoadFailure);
+      if (tab === "screen-reports-hub") renderReportsHub().catch(reportLoadFailure);
       if (tab === "screen-sites") renderSites().catch(reportLoadFailure);
       if (tab === "screen-route") renderRoute().catch(reportLoadFailure);
       if (tab === "screen-settings") renderSettings().catch(reportLoadFailure);
@@ -1280,6 +1302,48 @@
   }
 
   // ---------- 지적사항 허브 (현장별) ----------
+  // ================= 보고서 모아보기 =================
+  // 이행완료보고서는 로컬에 따로 저장되지 않고 생성될 때마다 구글 드라이브(현장별 "이행완료보고서"
+  // 폴더)로 백업되므로, 그 드라이브가 그대로 "지금까지 만든 보고서" 목록의 원본이다 - 프록시의
+  // list-reports가 모든 현장 폴더를 돌며 모아준다.
+  async function renderReportsHub() {
+    const list = $("#reportsHubList");
+    list.innerHTML = `<div class="empty-state">불러오는 중...</div>`;
+    let files;
+    try {
+      files = await DriveBackup.listReports();
+    } catch (err) {
+      list.innerHTML = `<div class="empty-state">보고서 목록을 불러오지 못했습니다.<br>네트워크를 확인해주세요.</div>`;
+      return;
+    }
+    if (files.length === 0) {
+      list.innerHTML = `<div class="empty-state">아직 생성된 이행완료보고서가 없습니다.</div>`;
+      return;
+    }
+    list.innerHTML = files.map((f) => `
+      <div class="report-row" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
+        <span class="report-row-site">${escapeHtml(f.siteName)}</span>
+        <span class="report-row-file">${escapeHtml(f.name)}</span>
+      </div>
+    `).join("");
+    $$("#reportsHubList .report-row").forEach((el) => {
+      el.addEventListener("click", async () => {
+        if (el.classList.contains("report-row-loading")) return;
+        el.classList.add("report-row-loading");
+        try {
+          const blob = await DriveBackup.downloadFile(el.dataset.id);
+          const name = el.dataset.name;
+          const mimeType = name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/hwp+zip";
+          await shareOrDownloadFile(blob, name, mimeType);
+        } catch (err) {
+          toast("파일을 여는 데 실패했습니다: " + (err && err.message ? err.message : "알 수 없는 오류"), "error");
+        } finally {
+          el.classList.remove("report-row-loading");
+        }
+      });
+    });
+  }
+
   async function renderDeficiencyHub() {
     const [sites, defs] = await Promise.all([FireDB.getAllSites(), FireDB.getAllDeficiencies()]);
     sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -2005,8 +2069,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 15;
-  const APP_VERSION_NAME = "1.14";
+  const APP_VERSION_CODE = 16;
+  const APP_VERSION_NAME = "1.15";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
@@ -2075,6 +2139,97 @@
   $("#aiEnabledToggle").addEventListener("change", (e) => {
     AiFill.setEnabled(e.target.checked);
     toast(e.target.checked ? "AI 자동 인식을 켰습니다." : "AI 자동 인식을 껐습니다.");
+  });
+
+  // ---------- 자료 백업 / 복구 ----------
+  // 거래처/점검/지적사항/스케줄(=Firebase의 공유 텍스트 자료)의 스냅샷을 zip으로 묶어 구글
+  // 드라이브에 보관한다. 사진/첨부파일은 업로드 시점에 이미 각자 개별적으로 구글 드라이브에
+  // 자동 저장되므로 여기 다시 담지 않는다(용량 낭비 + 중복). 이행완료보고서도 지적사항 데이터가
+  // 있으면 언제든 다시 만들 수 있어 별도로 담지 않는다 - "다시 만들 수 없는 원본 텍스트"만 백업한다.
+  async function collectBackupData() {
+    const [sites, inspections, deficiencies, schedules] = await Promise.all([
+      FireDB.getAllSites(),
+      FireDB.getAllInspections(),
+      FireDB.getAllDeficiencies(),
+      FireDB.getAllSchedules(),
+    ]);
+    return { version: 1, exportedAt: new Date().toISOString(), company: getCompanyProfile(), sites, inspections, deficiencies, schedules };
+  }
+
+  function backupFilenameDate() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  }
+
+  $("#btnDataBackup").addEventListener("click", async () => {
+    const btn = $("#btnDataBackup");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "백업 중...";
+    $("#backupStatus").textContent = "";
+    try {
+      const data = await collectBackupData();
+      const zip = new JSZip();
+      zip.file("backup.json", JSON.stringify(data, null, 2));
+      const blob = await zip.generateAsync({ type: "blob" });
+      const filename = `${backupFilenameDate()}.zip`;
+      await DriveBackup.uploadBackup(filename, blob);
+      $("#backupStatus").textContent = `마지막 백업: ${filename}`;
+      toast(`백업 완료: ${filename} (구글 드라이브에 저장됨)`, "success");
+    } catch (err) {
+      toast("백업에 실패했습니다: " + (err && err.message ? err.message : "알 수 없는 오류"), "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
+  $("#btnDataRestore").addEventListener("click", async () => {
+    const ok = await confirmDialog(
+      "가장 최근 백업으로 복구할까요?\n" +
+      "현재 거래처·점검·지적사항·스케줄 자료가 백업 시점 내용으로 전부 바뀌며, 이 앱을 쓰는 모든 사람에게 적용됩니다.\n" +
+      "되돌릴 수 없습니다."
+    );
+    if (!ok) return;
+    const btn = $("#btnDataRestore");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "복구 중...";
+    $("#backupStatus").textContent = "";
+    try {
+      const backups = await DriveBackup.listBackups();
+      if (backups.length === 0) {
+        toast("구글 드라이브에 백업 파일이 없습니다.", "error");
+        return;
+      }
+      const latest = backups[0];
+      btn.textContent = "다운로드 중...";
+      const blob = await DriveBackup.downloadFile(latest.id);
+      const zip = await JSZip.loadAsync(blob);
+      const entry = zip.file("backup.json");
+      if (!entry) throw new Error("백업 파일 형식이 올바르지 않습니다.");
+      const data = JSON.parse(await entry.async("string"));
+
+      btn.textContent = "복원 중...";
+      for (const site of data.sites || []) await FireDB.addSite(site);
+      for (const insp of data.inspections || []) await FireDB.addInspection(insp);
+      for (const def of data.deficiencies || []) await FireDB.addDeficiency(def);
+      for (const sched of data.schedules || []) {
+        await FireDB.setScheduleSiteIds(sched.id, sched.siteIds || []);
+        await FireDB.setScheduleConfirmed(sched.id, !!sched.confirmed);
+      }
+      if (data.company) saveCompanyProfile(data.company);
+
+      $("#backupStatus").textContent = `복구 완료: ${latest.name}`;
+      toast(`복구 완료 (백업 파일: ${latest.name})`, "success");
+      renderSettings();
+    } catch (err) {
+      toast("복구에 실패했습니다: " + (err && err.message ? err.message : "알 수 없는 오류"), "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
   });
 
   $("#btnAuthLogout").addEventListener("click", () => {

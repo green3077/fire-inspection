@@ -366,6 +366,26 @@ input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 .attachment-row .list-card-title a { color: var(--accent-dark); word-break: break-all; }
 .attachment-row .btn { width: auto; padding: 8px 16px; font-size: 14px; margin-top: 8px; }
 
+/* 보고서 모아보기 - 카드가 아니라 한 줄짜리 목록(업체명 + 파일명)으로 표시 */
+#reportsHubList {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.report-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.report-row:last-child { border-bottom: none; }
+.report-row-site { font-weight: 800; font-size: 15px; flex-shrink: 0; }
+.report-row-file { font-size: 13.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-row-loading { opacity: 0.5; pointer-events: none; }
+
 .badge {
   font-size: 13px;
   padding: 5px 12px;

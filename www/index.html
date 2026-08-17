@@ -304,6 +304,15 @@
     <div id="deficiencyHubList"></div>
   </section>
 
+  <!-- 보고서 모아보기 -->
+  <section id="screen-reports-hub" class="screen">
+    <div class="card">
+      <h2>📄 보고서 모아보기</h2>
+      <div class="hint-text">지금까지 만든 이행완료보고서입니다. 눌러서 열거나 공유할 수 있습니다.</div>
+    </div>
+    <div id="reportsHubList"></div>
+  </section>
+
   <!-- 지적사항 관리 -->
   <section id="screen-deficiencies" class="screen">
     <div class="card" id="deficiencyHeader"></div>
@@ -429,6 +438,13 @@
         <span>자동 저장 사용</span>
       </label>
     </div>
+    <div class="card">
+      <h2>💾 자료 백업</h2>
+      <div class="hint-text">거래처·점검·지적사항·스케줄 등 텍스트 자료를 zip으로 묶어 구글 드라이브에 저장합니다(사진은 이미 각자 자동 저장되므로 제외). 파일명은 백업한 날짜(예: 20260817.zip)입니다.</div>
+      <button class="btn btn-secondary" id="btnDataBackup" type="button">지금 백업하기</button>
+      <button class="btn btn-secondary" id="btnDataRestore" type="button">최근 백업으로 복구</button>
+      <p id="backupStatus" class="status-text"></p>
+    </div>
     <div class="card" id="authSettingsCard">
       <h2>🔒 로그인 계정</h2>
       <div class="hint-text">이 자료(거래처·점검기록·지적사항·스케줄)는 로그인한 사람 누구나 함께 보고 입력할 수 있는 공용 자료입니다.</div>
@@ -441,6 +457,7 @@
 
 <nav class="tab-bar no-print">
   <button class="tab-btn" data-tab="screen-deficiency-hub">📌 지적사항</button>
+  <button class="tab-btn" data-tab="screen-reports-hub">📄 보고서</button>
   <button class="tab-btn" data-tab="screen-sites">📋 거래처보기</button>
   <button class="tab-btn" data-tab="screen-route">🗓️ 일정관리</button>
   <button class="tab-btn" data-tab="screen-settings">⚙️ 설정</button>

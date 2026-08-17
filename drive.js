@@ -43,9 +43,58 @@
     }
   }
 
+  // 목록/다운로드 조회는 업로드와 달리 실패를 사용자에게 보여줘야 하는 화면(보고서 모아보기,
+  // 자료 백업/복구)에서 쓰이므로 uploadToSite와 달리 그대로 throw한다(호출부에서 toast 처리).
+  async function listReports() {
+    const res = await fetch(`${PROXY_URL}?action=list-reports`, {
+      headers: { "x-app-secret": APP_SECRET },
+    });
+    if (!res.ok) throw new Error("list_reports_failed_" + res.status);
+    const data = await res.json();
+    return data.files || [];
+  }
+
+  async function listBackups() {
+    const res = await fetch(`${PROXY_URL}?action=list-backups`, {
+      headers: { "x-app-secret": APP_SECRET },
+    });
+    if (!res.ok) throw new Error("list_backups_failed_" + res.status);
+    const data = await res.json();
+    return data.files || [];
+  }
+
+  async function downloadFile(fileId) {
+    const res = await fetch(`${PROXY_URL}?action=download&id=${encodeURIComponent(fileId)}`, {
+      headers: { "x-app-secret": APP_SECRET },
+    });
+    if (!res.ok) throw new Error("download_failed_" + res.status);
+    return res.blob();
+  }
+
+  // 백업 zip 업로드도 uploadToSite와 같은 프록시/폴더 구조를 그대로 재사용한다 -
+  // 조은소방_자동저장/_백업/백업/<날짜>.zip (siteName에 특수 폴더명을 써서 현장 목록과 섞이지 않게 함).
+  async function uploadBackup(filename, blob) {
+    const form = new FormData();
+    form.append("siteName", "_백업");
+    form.append("category", "백업");
+    form.append("filename", filename);
+    form.append("file", blob);
+    const res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "x-app-secret": APP_SECRET },
+      body: form,
+    });
+    if (!res.ok) throw new Error("backup_upload_failed_" + res.status);
+    return res.json();
+  }
+
   global.DriveBackup = {
     isEnabled,
     setEnabled,
     uploadToSite,
+    listReports,
+    listBackups,
+    downloadFile,
+    uploadBackup,
   };
 })(window);
