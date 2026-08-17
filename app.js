@@ -1869,11 +1869,20 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 4;
-  const APP_VERSION_NAME = "1.3";
+  const APP_VERSION_CODE = 5;
+  const APP_VERSION_NAME = "1.4";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  const UpdateBridge = IS_NATIVE_UPDATE ? window.Capacitor.registerPlugin("UpdateBridge") : null;
+  // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
+  // 로드되지 않고, 네이티브가 자동 주입하는 가벼운 native-bridge.js만 있다 - 거기엔 registerPlugin()이
+  // 없다(그건 @capacitor/core 패키지 쪽 API라 window.Capacitor.registerPlugin은 항상 존재하지 않는
+  // 함수였다 - 이 한 줄의 예외가 여기부터 파일 끝까지 나머지 스크립트 실행을 통째로 멈춰버려서
+  // 업데이트 확인/로그아웃 버튼이 아예 연결 안 되고, 자동 부팅(Auth.onReady)도 못 걸리는 게
+  // "홈 화면이 안 뜨고 버튼이 안 눌리는" 문제의 실제 원인이었다). native-bridge.js가 실제로 제공하는
+  // 저수준 API인 nativePromise(pluginName, methodName, options)로 직접 호출한다.
+  function callUpdateBridge(method, options) {
+    return window.Capacitor.nativePromise("UpdateBridge", method, options);
+  }
   let pendingApkUrl = null;
 
   $("#appVersionText").textContent =
@@ -1881,8 +1890,8 @@
 
   $("#btnCheckUpdate").addEventListener("click", async () => {
     if (pendingApkUrl) {
-      if (IS_NATIVE_UPDATE && UpdateBridge) {
-        UpdateBridge.openExternal({ url: pendingApkUrl }).catch(() => {
+      if (IS_NATIVE_UPDATE) {
+        callUpdateBridge("openExternal", { url: pendingApkUrl }).catch(() => {
           $("#updateStatus").textContent = "업데이트 파일을 여는 데 실패했습니다.";
         });
       } else {
