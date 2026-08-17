@@ -1,6 +1,6 @@
 {
-  "versionCode": 5,
-  "versionName": "1.4",
+  "versionCode": 6,
+  "versionName": "1.5",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "실제 원인 발견 및 수정: window.Capacitor.registerPlugin이 이 앱 구조에서는 존재하지 않는 함수라 스크립트가 중간에 멈춰 홈화면/업데이트/로그아웃이 모두 안 먹혔던 문제 해결"
+  "notes": "이행완료보고서 HWPX 다운로드/공유가 안드로이드 네이티브 공유 화면(앱 선택)을 쓰도록 개선"
 }

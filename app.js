@@ -16,6 +16,50 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+  function isNativeApp() {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  }
+  // 이 프로젝트는 번들러를 쓰지 않아 @capacitor/core 전체가 아니라 가벼운 native-bridge.js만 로드된다
+  // (window.Capacitor.registerPlugin은 없다) - 대신 native-bridge.js가 실제로 제공하는 저수준
+  // nativePromise(pluginName, methodName, options)로 아무 네이티브 플러그인이나 직접 호출한다.
+  function callNativePlugin(pluginName, method, options) {
+    return window.Capacitor.nativePromise(pluginName, method, options);
+  }
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result; // "data:<mime>;base64,XXXX"
+        const idx = result.indexOf(",");
+        resolve(idx >= 0 ? result.slice(idx + 1) : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  // 네이티브 앱(APK) 안의 WebView는 Web Share API(navigator.share)를 지원하지 않는 경우가 많아
+  // "공유" 버튼을 눌러도 아무 앱 선택 화면 없이 조용히 실패하거나 다운로드로만 대체됐다 - 안드로이드의
+  // 진짜 공유 시트(어느 앱으로 보낼지 아이콘이 뜨는 화면)를 확실히 띄우려면 @capacitor/filesystem으로
+  // 파일을 앱 캐시에 저장한 뒤 그 파일의 uri를 @capacitor/share에 넘겨야 한다.
+  async function nativeShareFiles(blobsWithNames, title) {
+    const uris = [];
+    for (const { blob, name } of blobsWithNames) {
+      const base64 = await blobToBase64(blob);
+      const result = await callNativePlugin("Filesystem", "writeFile", {
+        path: name,
+        data: base64,
+        directory: "CACHE",
+        recursive: true,
+      });
+      uris.push(result.uri);
+    }
+    await callNativePlugin("Share", "share", {
+      title,
+      dialogTitle: "공유할 앱을 선택하세요",
+      files: uris,
+    });
+  }
+
   // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
   // 아무 일도 하지 않고, 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
   function backupToDrive(siteId, category, filename, blob) {
@@ -1086,6 +1130,16 @@
   }
 
   async function shareOrDownloadFiles(files, title) {
+    if (isNativeApp()) {
+      try {
+        await nativeShareFiles(files.map((f) => ({ blob: f, name: f.name })), title);
+        return;
+      } catch (e) {
+        if (e && e.message && /cancel/i.test(e.message)) return; // 사용자가 공유 화면에서 취소함
+        toast("공유 화면을 여는 데 실패했습니다: " + (e && e.message ? e.message : "알 수 없는 오류"), "error");
+        return;
+      }
+    }
     if (navigator.canShare && navigator.canShare({ files })) {
       try {
         await navigator.share({ files, title });
@@ -1668,15 +1722,23 @@
         `이행완료보고서_${lastCompletionReportData.siteName}_${todayISO()}.hwpx`,
         blob
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `이행완료보고서_${lastCompletionReportData.siteName}.hwpx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      toast("HWPX 파일이 생성되었습니다. 한글 프로그램에서 정상적으로 열리는지 꼭 확인해주세요.", "success");
+      // 앱(APK) 안의 WebView는 <a download>로 조용히 다운로드하는 게 안 보이거나 그냥 안 될 때가
+      // 많다(사용자가 실제로 겪은 문제) - 네이티브에서는 안드로이드의 진짜 저장/공유 화면을 띄워서
+      // "파일로 저장"이나 원하는 앱을 직접 골라 눈으로 확인하며 저장할 수 있게 한다.
+      const filename = `이행완료보고서_${lastCompletionReportData.siteName}.hwpx`;
+      if (isNativeApp()) {
+        await shareOrDownloadFile(blob, filename, "application/hwp+zip");
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast("HWPX 파일이 생성되었습니다. 한글 프로그램에서 정상적으로 열리는지 꼭 확인해주세요.", "success");
+      }
     } catch (err) {
       toast("HWPX 파일 생성에 실패했습니다: " + err.message, "error");
     } finally {
@@ -1717,6 +1779,16 @@
 
   // 파일 공유를 지원하는 브라우저(모바일 대부분)면 공유 시트를 띄우고, 아니면 파일을 바로 다운로드한다.
   async function shareOrDownloadFile(blob, filename, mimeType) {
+    if (isNativeApp()) {
+      try {
+        await nativeShareFiles([{ blob, name: filename }], "이행완료 보고서");
+        return;
+      } catch (e) {
+        if (e && e.message && /cancel/i.test(e.message)) return; // 사용자가 공유 화면에서 취소함
+        toast("공유 화면을 여는 데 실패했습니다: " + (e && e.message ? e.message : "알 수 없는 오류"), "error");
+        return;
+      }
+    }
     const file = new File([blob], filename, { type: mimeType });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
@@ -1869,8 +1941,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 5;
-  const APP_VERSION_NAME = "1.4";
+  const APP_VERSION_CODE = 6;
+  const APP_VERSION_NAME = "1.5";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
