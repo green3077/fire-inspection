@@ -1,6 +1,6 @@
 {
-  "versionCode": 12,
-  "versionName": "1.11",
+  "versionCode": 13,
+  "versionName": "1.12",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "앱 이름을 '불사조'로 변경"
+  "notes": "이행완료보고서 'PDF 저장' 버튼이 안드로이드에서 아무 반응 없던 문제 수정 (window.print()는 WebView에서 동작하지 않음)"
 }

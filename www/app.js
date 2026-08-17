@@ -1785,7 +1785,36 @@
     showScreen("screen-deficiencies");
   });
 
-  $("#btnPrintCompletionReport").addEventListener("click", () => window.print());
+  // 안드로이드 WebView는 window.print()를 기본적으로 지원하지 않는다(PrintManager 네이티브
+  // 연동이 따로 있어야 하는데, 이 프로젝트엔 없다) - 그냥 조용히 아무 반응도 없다(사용자가 실제로
+  // 겪은 문제). 네이티브 앱에서는 대신 이미 있는 PDF 생성 경로(공유 버튼과 동일)로 PDF 파일을
+  // 만들어 다운로드 폴더에 저장하고 바로 열도록 한다. 웹(데스크톱 브라우저)에서는 실제 인쇄도
+  // 가능한 window.print()가 더 유용하므로 그대로 둔다.
+  // 네이티브 앱에서는 실제 "인쇄"가 아니라 PDF 저장만 일어나므로 버튼 문구를 그에 맞게 바꾼다.
+  if (isNativeApp()) $("#btnPrintCompletionReport").textContent = "PDF 저장";
+  $("#btnPrintCompletionReport").addEventListener("click", async () => {
+    if (!isNativeApp()) {
+      window.print();
+      return;
+    }
+    const btn = $("#btnPrintCompletionReport");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "PDF 생성 중...";
+    try {
+      const blob = await generateCompletionReportPdfBlob();
+      const filename = `이행완료보고서_${lastCompletionReportData.siteName}.pdf`;
+      btn.textContent = "저장 중...";
+      const saved = await nativeSaveToDownloads(blob, filename, "application/pdf");
+      toast(`저장되었습니다: ${saved.location}`, "success");
+      await nativeOfferToOpen(saved.uri, saved.mimeType);
+    } catch (err) {
+      toast("PDF 생성에 실패했습니다: " + err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
 
   async function generateCompletionReportPdfBlob() {
     const el = $("#completionReportContent");
@@ -1976,8 +2005,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 12;
-  const APP_VERSION_NAME = "1.11";
+  const APP_VERSION_CODE = 13;
+  const APP_VERSION_NAME = "1.12";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
