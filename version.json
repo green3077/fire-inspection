@@ -1,6 +1,6 @@
 {
-  "versionCode": 6,
-  "versionName": "1.5",
+  "versionCode": 7,
+  "versionName": "1.6",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "이행완료보고서 HWPX 다운로드/공유가 안드로이드 네이티브 공유 화면(앱 선택)을 쓰도록 개선"
+  "notes": "HWPX 다운로드가 안드로이드 '다운로드' 폴더에 실제로 저장되고 저장 위치를 알려주도록 개선, 저장/공유 진행 상태 표시 추가"
 }

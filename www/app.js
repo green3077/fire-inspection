@@ -59,6 +59,19 @@
       files: uris,
     });
   }
+  // "다운로드한 파일이 어디에 저장되는지 모르겠다"는 요청으로 추가 - 공유 화면과 달리 이건 다른 앱으로
+  // 넘기지 않고, 안드로이드 표준 "다운로드" 폴더(파일 관리자 앱에서 바로 보이는 곳)에 직접 저장하고
+  // 그 위치를 그대로 돌려준다. 네이티브 FileSaver 플러그인(이 프로젝트가 직접 만든 것, android/app/src/
+  // main/java/.../FileSaver.java) 사용.
+  async function nativeSaveToDownloads(blob, filename, mimeType) {
+    const base64 = await blobToBase64(blob);
+    const result = await callNativePlugin("FileSaver", "saveToDownloads", {
+      filename,
+      data: base64,
+      mimeType,
+    });
+    return result.location;
+  }
 
   // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
   // 아무 일도 하지 않고, 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
@@ -1723,11 +1736,13 @@
         blob
       );
       // 앱(APK) 안의 WebView는 <a download>로 조용히 다운로드하는 게 안 보이거나 그냥 안 될 때가
-      // 많다(사용자가 실제로 겪은 문제) - 네이티브에서는 안드로이드의 진짜 저장/공유 화면을 띄워서
-      // "파일로 저장"이나 원하는 앱을 직접 골라 눈으로 확인하며 저장할 수 있게 한다.
+      // 많다(사용자가 실제로 겪은 문제) - 네이티브에서는 안드로이드 표준 "다운로드" 폴더에 직접 저장하고
+      // (FileSaver 네이티브 플러그인) 실제 저장된 위치를 그대로 알려준다.
       const filename = `이행완료보고서_${lastCompletionReportData.siteName}.hwpx`;
       if (isNativeApp()) {
-        await shareOrDownloadFile(blob, filename, "application/hwp+zip");
+        btn.textContent = "저장 중...";
+        const location = await nativeSaveToDownloads(blob, filename, "application/hwp+zip");
+        toast(`저장되었습니다: ${location}`, "success");
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1824,10 +1839,12 @@
       if (format === "hwpx") {
         const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
         backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.hwpx`, blob);
+        btn.textContent = "공유 화면 여는 중...";
         await shareOrDownloadFile(blob, `${filenameBase}.hwpx`, "application/hwp+zip");
       } else {
         const blob = await generateCompletionReportPdfBlob();
         backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.pdf`, blob);
+        btn.textContent = "공유 화면 여는 중...";
         await shareOrDownloadFile(blob, `${filenameBase}.pdf`, "application/pdf");
       }
     } catch (err) {
@@ -1941,8 +1958,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 6;
-  const APP_VERSION_NAME = "1.5";
+  const APP_VERSION_CODE = 7;
+  const APP_VERSION_NAME = "1.6";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/fire-inspection/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가
