@@ -1,6 +1,6 @@
 {
-  "versionCode": 8,
-  "versionName": "1.7",
+  "versionCode": 9,
+  "versionName": "1.8",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "다운로드 완료 후 어떤 프로그램으로 열지 선택하는 화면이 바로 뜨도록 추가"
+  "notes": "이행완료보고서 HWPX 사진이 표 칸에 꽉 차게 나오도록 수정, 모바일 화면 표 가독성 개선"
 }
