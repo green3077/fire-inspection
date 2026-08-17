@@ -405,6 +405,42 @@ const ClientImport = (() => {
     return FireImport.extractPdfRows(file);
   }
 
+  // hwp→hwpx 변환 - Cloudflare Worker 프록시(fire-inspection-hwp-proxy, 이 앱의 다른 프록시들
+  // (fire-inspection-drive-proxy 등)과 같은 패턴)를 거쳐 hwpx.io API를 호출한다. 실제 API 키는
+  // Worker 쪽 시크릿으로만 존재하고 이 공개 앱 코드에는 전혀 없다 - x-app-secret은 "아무나 우리
+  // hwpx.io 일일 사용량을 써버리지 못하게" 막는 최소한의 접근 제한일 뿐, 진짜 비밀이 아니다
+  // (drive.js의 APP_SECRET과 동일한 값/보안 수준). 요청 실패/시간초과 시 항상 기존 PrvText
+  // 방식(hwpToText)으로 조용히 폴백한다 - 이 프록시가 언젠가 막혀도 앱 자체는 그대로 동작해야 한다.
+  const HWP_CONVERT_PROXY_URL = "https://fire-inspection-hwp-proxy.cigar-log-gemini-proxy.workers.dev";
+  const HWP_CONVERT_APP_SECRET = "jeeun-fire-9417";
+
+  async function convertHwpToHwpxViaService(file) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await fetch(HWP_CONVERT_PROXY_URL, {
+        method: "POST",
+        headers: { "x-app-secret": HWP_CONVERT_APP_SECRET },
+        body: form,
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      // hwpx.io는 결과를 zip(안에 실제 .hwpx + manifest.json)으로 준다 - Worker는 그걸 그대로
+      // 넘겨주므로 여기서 직접 풀어서 .hwpx 항목만 꺼낸다.
+      const zipBlob = await res.blob();
+      const zip = await JSZip.loadAsync(zipBlob);
+      const hwpxName = Object.keys(zip.files).find((n) => n.toLowerCase().endsWith(".hwpx"));
+      if (!hwpxName) return null;
+      return await zip.files[hwpxName].async("blob");
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async function hwpToText(file) {
     // 정식 HWP 파서가 아닌 최선 노력(best-effort) 추출: HWP(비HWPX)는 OLE 복합문서 포맷이며
     // "PrvText"(미리보기 텍스트) 스트림은 압축 없이 UTF-16LE로 저장되어 있어 이를 직접 읽어봄.
@@ -510,9 +546,19 @@ const ClientImport = (() => {
       text = r.text; rows = r.rows;
     } else if (ext === "hwp") {
       typeLabel = "한글(HWP)";
-      lowConfidence = true;
-      text = await hwpToText(file);
-      if (!text) return { fields: {}, typeLabel, lowConfidence: true, failed: true };
+      // 변환 서버로 진짜 hwpx를 먼저 만들어서, hwpx 전용 경로(hwpxToTextAndRows - 표 구조까지
+      // 정확히 읽음)를 그대로 재사용한다 - PrvText 미리보기(문서 앞부분만, 표 내용 없음)보다
+      // 훨씬 정확하다. 서버가 안 켜져 있거나(같은 Wi-Fi 아님) 응답이 없으면 기존 방식으로 폴백.
+      const convertedHwpx = await convertHwpToHwpxViaService(file);
+      if (convertedHwpx) {
+        typeLabel = "한글(HWP→HWPX 변환)";
+        const r = await hwpxToTextAndRows(convertedHwpx);
+        text = r.text; rows = r.rows;
+      } else {
+        lowConfidence = true;
+        text = await hwpToText(file);
+        if (!text) return { fields: {}, typeLabel, lowConfidence: true, failed: true };
+      }
     } else if (["jpg", "jpeg", "png", "webp", "bmp"].includes(ext)) {
       typeLabel = "사진(OCR)";
       lowConfidence = true;

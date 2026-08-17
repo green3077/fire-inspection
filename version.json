@@ -1,6 +1,6 @@
 {
-  "versionCode": 13,
-  "versionName": "1.12",
+  "versionCode": 15,
+  "versionName": "1.14",
   "apkUrl": "https://green3077.github.io/fire-inspection/fire-inspection.apk",
-  "notes": "이행완료보고서 'PDF 저장' 버튼이 안드로이드에서 아무 반응 없던 문제 수정 (window.print()는 WebView에서 동작하지 않음)"
+  "notes": "거래처 등록 시 hwp 파일 업로드가 클라우드 변환(hwpx.io, Cloudflare Worker 프록시)을 거쳐 더 정확하게 인식되도록 개선 - PC 없이 어디서든 동작"
 }
