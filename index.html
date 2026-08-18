@@ -222,6 +222,10 @@
       <div id="importSummary" class="hint-text hidden"></div>
       <div class="field"><span>현장명(거래처명) *</span><input type="text" id="siteName" placeholder="예: 그린빌딩"></div>
       <div class="field"><span>주소</span><input type="text" id="siteAddress" placeholder="예: 서울시 강남구 ..."></div>
+      <div class="field-row">
+        <div class="field"><span>종합점검</span><button type="button" class="month-picker-btn" id="btnPickComprehensiveMonth">미정</button></div>
+        <div class="field"><span>작동점검</span><button type="button" class="month-picker-btn" id="btnPickOperationalMonth">미정</button></div>
+      </div>
       <button class="btn btn-secondary" id="btnLookupBldReg" type="button">🏢 건축물대장 조회</button>
       <div id="bldRegResult" class="bldreg-result hidden"></div>
       <div class="field-row">
@@ -241,10 +245,6 @@
         <div class="field"><span>사용승인일</span><input type="text" id="siteApprovalDate" placeholder="예: 2010-05-01"></div>
       </div>
       <div class="field"><span>구조</span><input type="text" id="siteStructure" placeholder="예: 철근콘크리트구조"></div>
-      <div class="field-row">
-        <div class="field"><span>종합점검</span><button type="button" class="month-picker-btn" id="btnPickComprehensiveMonth">미정</button></div>
-        <div class="field"><span>작동점검</span><button type="button" class="month-picker-btn" id="btnPickOperationalMonth">미정</button></div>
-      </div>
 
       <h2 class="list-heading">소방안전관리자</h2>
       <div class="field-row">
@@ -459,6 +459,14 @@
       <label class="setting-toggle-row">
         <input type="checkbox" id="driveEnabledToggle">
         <span>자동 저장 사용</span>
+      </label>
+    </div>
+    <div class="card">
+      <h2>📝 거래처 변경이력</h2>
+      <div class="hint-text">거래처 상세 화면에서 정보 수정 이력을 표시할지 설정합니다.</div>
+      <label class="setting-toggle-row">
+        <input type="checkbox" id="changeHistoryEnabledToggle">
+        <span>변경이력 보기</span>
       </label>
     </div>
     <div class="card">

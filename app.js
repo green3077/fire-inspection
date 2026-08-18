@@ -1068,7 +1068,7 @@
       ${site.notes ? `<div class="report-meta-row"><span class="label">비고</span><span>${escapeHtml(site.notes)}</span></div>` : ""}
     `;
     const history = site.changeHistory || [];
-    $("#siteChangeHistorySection").classList.toggle("hidden", history.length === 0);
+    $("#siteChangeHistorySection").classList.toggle("hidden", history.length === 0 || !isChangeHistoryVisible());
     $("#siteChangeHistoryList").innerHTML = history.slice().reverse().map((h) => `
       <div class="change-history-entry">
         <div class="change-history-date">${escapeHtml((h.date || "").slice(0, 10))}</div>
@@ -2164,6 +2164,15 @@
     });
   }
 
+  const CHANGE_HISTORY_VISIBLE_KEY = "fireInspectionShowChangeHistory";
+  function isChangeHistoryVisible() {
+    const v = localStorage.getItem(CHANGE_HISTORY_VISIBLE_KEY);
+    return v === null ? true : v === "1";
+  }
+  function setChangeHistoryVisible(on) {
+    localStorage.setItem(CHANGE_HISTORY_VISIBLE_KEY, on ? "1" : "0");
+  }
+
   async function renderSettings() {
     const profile = getCompanyProfile();
     $("#companyName").value = profile.name;
@@ -2176,6 +2185,7 @@
     $("#jusoApiKey").value = apiKeys.jusoKey || "";
     $("#dataGoKrApiKey").value = apiKeys.dataGoKrKey || "";
     $("#aiEnabledToggle").checked = AiFill.isEnabled();
+    $("#changeHistoryEnabledToggle").checked = isChangeHistoryVisible();
     renderDriveStatus();
     $("#authCurrentUser").textContent = Auth.getDisplayName();
   }
@@ -2255,6 +2265,11 @@
   $("#aiEnabledToggle").addEventListener("change", (e) => {
     AiFill.setEnabled(e.target.checked);
     toast(e.target.checked ? "AI 자동 인식을 켰습니다." : "AI 자동 인식을 껐습니다.");
+  });
+
+  $("#changeHistoryEnabledToggle").addEventListener("change", (e) => {
+    setChangeHistoryVisible(e.target.checked);
+    toast(e.target.checked ? "변경이력 보기를 켰습니다." : "변경이력 보기를 껐습니다.");
   });
 
   // ---------- 자료 백업 / 복구 ----------
