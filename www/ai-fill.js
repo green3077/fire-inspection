@@ -131,7 +131,10 @@ const AiFill = (() => {
         responseMimeType: "application/json",
         responseSchema: toGeminiSchema(schema),
         temperature: 0.1,
-        maxOutputTokens: maxTokens
+        maxOutputTokens: maxTokens,
+        // gemini-3.6-flash는 기본적으로 "생각" 단계를 거쳐 30초 이상 걸릴 수 있다 - 낮은 예산으로
+        // 제한해서 예전 2.0/2.5-flash 수준의 응답 속도(1~3초)를 유지한다(0은 이 모델에서 400 에러).
+        thinkingConfig: { thinkingBudget: 512 }
       }
     };
     let last = null;
