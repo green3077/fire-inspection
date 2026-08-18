@@ -694,7 +694,8 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
-    toast(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요..." : "자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    ImportLoading.show(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다." : "자료를 분석하고 있습니다.");
+    ImportLoading.startSimulated();
     try {
       let result = null;
       if (AiFill.isEnabled()) {
@@ -705,7 +706,11 @@
           result = null; // AI 분석 실패 시 기존 방식으로 폴백
         }
       }
-      if (!result) result = await ClientImport.parseClientFile(file);
+      if (!result) {
+        result = await ClientImport.parseClientFile(file, (percent) =>
+          ImportLoading.setProgress(percent, "사진에서 글자를 인식하고 있습니다.")
+        );
+      }
       {
         const guessName = (result.fields && result.fields.name) || file.name.replace(/\.[^.]+$/, "");
         DriveBackup.uploadToSite(guessName, "거래처_등록자료", file.name, file).catch(() => {});
@@ -749,6 +754,8 @@
     } catch (err) {
       toast("파일을 분석하는 중 오류가 발생했습니다. 직접 입력해주세요.", "error");
       openBlankSiteForm();
+    } finally {
+      ImportLoading.hide();
     }
   });
 
@@ -1574,7 +1581,8 @@
     if (!file) return;
     backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
     const ext = file.name.split(".").pop().toLowerCase();
-    if (AiFill.isEnabled()) toast("AI가 자료를 분석하고 있습니다. 잠시만 기다려주세요...");
+    ImportLoading.show(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다." : "자료를 분석하고 있습니다.");
+    ImportLoading.startSimulated();
     try {
       let rows = null;
       let lowConfidence = false;
@@ -1618,6 +1626,8 @@
       toast(`${typeLabel}에서 ${rows.length}개 지적사항을 가져왔습니다.${lowConfidence ? " (인식 품질이 낮을 수 있어 내용을 확인해주세요.)" : ""}`);
     } catch (err) {
       toast("파일을 읽는 중 오류가 발생했습니다.", "error");
+    } finally {
+      ImportLoading.hide();
     }
   });
 

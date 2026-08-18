@@ -515,16 +515,24 @@ const ClientImport = (() => {
     return tesseractLoadPromise;
   }
 
-  async function imageToText(file) {
+  async function imageToText(file, onProgress) {
     // 사진 속 글자 인식(OCR) - 최초 사용 시 라이브러리/언어 데이터를 인터넷에서 내려받아 다소 시간이 걸릴 수 있음.
     await loadTesseract();
     if (!window.Tesseract) return "";
-    const { data } = await Tesseract.recognize(file, "kor+eng");
+    const { data } = await Tesseract.recognize(file, "kor+eng", {
+      logger: (m) => {
+        // m.progress는 현재 단계(언어데이터 로드/인식 등) 내에서의 0~1 진행률 - 실제 글자 인식 단계일 때만 반영.
+        if (onProgress && m.status === "recognizing text" && typeof m.progress === "number") {
+          onProgress(m.progress * 100);
+        }
+      }
+    });
     return (data && data.text) || "";
   }
 
   // ---------- 통합 진입점 ----------
-  async function parseClientFile(file) {
+  // onProgress(percent, statusText?)는 실제 진행률을 알 수 있는 구간(사진 OCR)에서만 호출됨 - 그 외 형식은 호출부가 자체 시뮬레이션 진행바를 사용.
+  async function parseClientFile(file, onProgress) {
     const ext = file.name.split(".").pop().toLowerCase();
     let text = "", rows = null, lowConfidence = false, typeLabel = "";
 
@@ -562,7 +570,7 @@ const ClientImport = (() => {
     } else if (["jpg", "jpeg", "png", "webp", "bmp"].includes(ext)) {
       typeLabel = "사진(OCR)";
       lowConfidence = true;
-      text = await imageToText(file);
+      text = await imageToText(file, onProgress);
       if (!text || !text.trim()) return { fields: {}, typeLabel, lowConfidence: true, failed: true };
     } else {
       return { fields: {}, typeLabel: "", lowConfidence: false, unsupported: true };

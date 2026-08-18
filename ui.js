@@ -33,6 +33,58 @@ function confirmDialog(message) {
   });
 }
 
+// 자료 불러오기(AI 분석/OCR/파일 파싱) 동안 보여주는 진행률 로딩 화면.
+// 실제 진행률을 알 수 없는 작업(AI 분석, 엑셀/워드/PDF 파싱 등)은 startSimulated()로 서서히 채워지는 척하다가
+// hide()에서 100%로 스냅한다. 사진 OCR처럼 실제 진행률(Tesseract logger)이 있으면 setProgress()로 그 값을 그대로 반영 -
+// 이후엔 simPercent도 그 값으로 맞춰서 시뮬레이션이 뒤로 되돌아가거나 다시 앞지르지 않도록 한다.
+const ImportLoading = (() => {
+  let simTimer = null;
+  let simPercent = 0;
+  const overlay = () => document.getElementById("importLoadingOverlay");
+  const fill = () => document.getElementById("importLoadingBarFill");
+  const percentEl = () => document.getElementById("importLoadingPercent");
+  const textEl = () => document.getElementById("importLoadingText");
+
+  function show(message) {
+    simPercent = 0;
+    clearInterval(simTimer);
+    simTimer = null;
+    if (textEl()) textEl().innerHTML = (message || "자료를 분석하고 있습니다.") + "<br>잠시만 기다려주세요.";
+    if (fill()) fill().style.width = "0%";
+    if (percentEl()) percentEl().textContent = "0%";
+    if (overlay()) overlay().classList.remove("hidden");
+  }
+
+  function startSimulated() {
+    clearInterval(simTimer);
+    simTimer = setInterval(() => {
+      simPercent = Math.min(simPercent + (90 - simPercent) * 0.06 + 0.4, 90);
+      renderProgress(simPercent);
+    }, 200);
+  }
+
+  function renderProgress(percent) {
+    const p = Math.max(0, Math.min(100, Math.round(percent)));
+    if (fill()) fill().style.width = p + "%";
+    if (percentEl()) percentEl().textContent = p + "%";
+  }
+
+  function setProgress(percent, statusText) {
+    simPercent = Math.max(simPercent, percent); // 시뮬레이션 진행률이 실제 값보다 뒤로 되돌아가지 않게
+    renderProgress(percent);
+    if (statusText && textEl()) textEl().innerHTML = statusText + "<br>잠시만 기다려주세요.";
+  }
+
+  function hide() {
+    clearInterval(simTimer);
+    simTimer = null;
+    renderProgress(100);
+    setTimeout(() => { if (overlay()) overlay().classList.add("hidden"); }, 150);
+  }
+
+  return { show, startSimulated, setProgress, hide };
+})();
+
 // "pdf" | "hwpx" | null(취소) 반환
 function pickShareFormat() {
   const modal = document.getElementById("shareFormatModal");
