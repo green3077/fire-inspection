@@ -216,6 +216,37 @@ body {
   white-space: nowrap;
 }
 
+.month-picker-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.month-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.month-picker-cell {
+  padding: 14px 0;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.month-picker-cell:active { background: var(--gold-bg); border-color: var(--gold); }
+
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .field span { font-size: 15px; color: var(--text-dim); font-weight: 600; }
 .field-row { display: flex; gap: 12px; }

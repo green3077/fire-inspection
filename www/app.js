@@ -8,6 +8,10 @@
   let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
   let sitesSelectedRegion = null; // 지역별 모드에서 드릴다운한 지역 (구/도 이름), null이면 지역 버튼 목록 표시 중
   let comprehensiveTarget = null; // 현장 등록/수정 폼의 "종합점검대상/해당없음" 토글 상태: true | false | null(미정)
+  // 종합점검/작동점검월을 예외적으로 직접 지정한 값 - null이면 자동계산(comprehensiveTarget+사용승인일) 사용,
+  // 숫자(1~12)면 저장 시 site.comprehensiveMonthOverride/operationalMonthOverride로 저장되어 항상 우선한다.
+  let comprehensiveMonthValue = null;
+  let operationalMonthValue = null;
   let scheduleCalDate = new Date();   // 스케줄 관리 달력이 보여주는 월
   let scheduleSelectedDate = "";      // 스케줄 관리에서 선택된 날짜 (YYYY-MM-DD)
   let scheduleCompanySearchTerm = ""; // 스케줄 관리 업체 선택 목록 검색어
@@ -222,14 +226,25 @@
 
   // 종합점검/작동점검 대상월 계산 - site.comprehensiveTarget이 true(스프링클러 등 설치, 종합점검 대상)면
   // 종합점검은 사용승인월, 작동점검은 그 6개월 뒤. false(해당없음)면 종합점검 없이 작동점검만 사용승인월.
-  // comprehensiveTarget이 아직 정해지지 않았거나(null) 사용승인일을 알 수 없으면 계산할 수 없으므로 null 반환.
+  // comprehensiveTarget이 아직 정해지지 않았거나(null) 사용승인일을 알 수 없으면 자동계산은 못하지만,
+  // site.comprehensiveMonthOverride/operationalMonthOverride(현장 정보 수정 화면에서 예외적으로 직접
+  // 지정한 월)가 있으면 그 값이 항상 자동계산 결과보다 우선한다.
   function computeInspectionMonths(site) {
     const approvalMonth = extractApprovalMonth(site.approvalDate);
-    if (approvalMonth === null || typeof site.comprehensiveTarget !== "boolean") return null;
-    if (site.comprehensiveTarget) {
-      return { comprehensiveMonth: approvalMonth, operationalMonth: ((approvalMonth - 1 + 6) % 12) + 1 };
+    let comprehensiveMonth = null;
+    let operationalMonth = null;
+    if (approvalMonth !== null && typeof site.comprehensiveTarget === "boolean") {
+      if (site.comprehensiveTarget) {
+        comprehensiveMonth = approvalMonth;
+        operationalMonth = ((approvalMonth - 1 + 6) % 12) + 1;
+      } else {
+        operationalMonth = approvalMonth;
+      }
     }
-    return { comprehensiveMonth: null, operationalMonth: approvalMonth };
+    if (typeof site.comprehensiveMonthOverride === "number") comprehensiveMonth = site.comprehensiveMonthOverride;
+    if (typeof site.operationalMonthOverride === "number") operationalMonth = site.operationalMonthOverride;
+    if (comprehensiveMonth === null && operationalMonth === null) return null;
+    return { comprehensiveMonth, operationalMonth };
   }
 
   function inspectionScheduleBadgeHtml(site) {
@@ -575,15 +590,51 @@
     comprehensiveTarget = value;
     $("#btnCompTargetYes").classList.toggle("active", value === true);
     $("#btnCompTargetNo").classList.toggle("active", value === false);
+    renderMonthPickerButtons();
   }
   $("#btnCompTargetYes").addEventListener("click", () => renderComprehensiveToggle(comprehensiveTarget === true ? null : true));
   $("#btnCompTargetNo").addEventListener("click", () => renderComprehensiveToggle(comprehensiveTarget === false ? null : false));
+
+  // 종합점검/작동점검 버튼에 현재 값(직접 지정한 값이 있으면 그 값, 없으면 자동계산 결과)을 표시.
+  function renderMonthPickerButtons() {
+    const sched = computeInspectionMonths({
+      comprehensiveTarget,
+      approvalDate: $("#siteApprovalDate").value,
+      comprehensiveMonthOverride: comprehensiveMonthValue,
+      operationalMonthOverride: operationalMonthValue
+    });
+    const comp = sched && sched.comprehensiveMonth;
+    $("#btnPickComprehensiveMonth").textContent = comp ? `${comp}월` : (comprehensiveTarget === false ? "해당없음" : "미정");
+    const oper = sched && sched.operationalMonth;
+    $("#btnPickOperationalMonth").textContent = oper ? `${oper}월` : "미정";
+  }
+  $("#siteApprovalDate").addEventListener("input", renderMonthPickerButtons);
+
+  // 월 그리드에서 고른 뒤에도 확인 다이얼로그를 한 번 더 거쳐야 실제로 반영된다 - 그리드 자체에서
+  // 취소하거나 확인 다이얼로그에서 취소하면 기존 표시값 그대로 유지, 마지막에 "저장" 버튼을 눌러야
+  // site.comprehensiveMonthOverride/operationalMonthOverride로 실제 저장된다(btnSaveSite 참고).
+  $("#btnPickComprehensiveMonth").addEventListener("click", async () => {
+    const month = await pickMonth("종합점검 월 선택");
+    if (month === null) return;
+    if (!(await confirmDialog(`종합점검을 ${month}월로 변경하시겠습니까?`))) return;
+    comprehensiveMonthValue = month;
+    renderMonthPickerButtons();
+  });
+  $("#btnPickOperationalMonth").addEventListener("click", async () => {
+    const month = await pickMonth("작동점검 월 선택");
+    if (month === null) return;
+    if (!(await confirmDialog(`작동점검을 ${month}월로 변경하시겠습니까?`))) return;
+    operationalMonthValue = month;
+    renderMonthPickerButtons();
+  });
 
   function openBlankSiteForm() {
     editingSiteId = null;
     pendingAttachments = [];
     $("#siteFormTitle").textContent = "현장 추가";
     SITE_FORM_FIELDS.forEach((id) => { $("#" + id).value = ""; });
+    comprehensiveMonthValue = null;
+    operationalMonthValue = null;
     renderComprehensiveToggle(null);
     $("#bldRegResult").classList.add("hidden");
     $("#importSummary").classList.add("hidden");
@@ -778,8 +829,11 @@
     receiverLocation: "수신기 위치", receiverAccess: "수신기 접근방법",
     pumpRoomLocation: "펌프실 위치", pumpRoomAccess: "펌프실 접근방법",
     equipmentMemo: "메모", notes: "비고",
-    comprehensiveTarget: "종합점검대상 여부"
+    comprehensiveTarget: "종합점검대상 여부",
+    comprehensiveMonthOverride: "종합점검월(직접지정)", operationalMonthOverride: "작동점검월(직접지정)"
   };
+
+  const NUMBER_FIELDS = new Set(["comprehensiveMonthOverride", "operationalMonthOverride"]);
 
   // 새로 입력/인식된 값 중 실제로 뭔가 채워진 것만 기존 현장 위에 덮어쓴다 - 새 값이 비어 있으면
   // (예: 이번엔 그 항목이 인식/입력되지 않음) 기존에 저장돼 있던 값을 그대로 유지한다.
@@ -791,6 +845,10 @@
         if (typeof nv === "boolean") merged[key] = nv;
         continue;
       }
+      if (NUMBER_FIELDS.has(key)) {
+        if (typeof nv === "number") merged[key] = nv;
+        continue;
+      }
       if (nv !== undefined && nv !== null && String(nv).trim() !== "") merged[key] = nv;
     }
     return merged;
@@ -799,8 +857,14 @@
   function diffSiteFields(oldSite, newSite) {
     const changes = [];
     for (const key of Object.keys(SITE_FIELD_LABELS)) {
-      const ov = key === "comprehensiveTarget" ? (typeof oldSite[key] === "boolean" ? String(oldSite[key]) : "") : String(oldSite[key] || "").trim();
-      const nv = key === "comprehensiveTarget" ? (typeof newSite[key] === "boolean" ? String(newSite[key]) : "") : String(newSite[key] || "").trim();
+      const isBool = key === "comprehensiveTarget";
+      const isNum = NUMBER_FIELDS.has(key);
+      const ov = isBool ? (typeof oldSite[key] === "boolean" ? String(oldSite[key]) : "")
+        : isNum ? (typeof oldSite[key] === "number" ? String(oldSite[key]) : "")
+        : String(oldSite[key] || "").trim();
+      const nv = isBool ? (typeof newSite[key] === "boolean" ? String(newSite[key]) : "")
+        : isNum ? (typeof newSite[key] === "number" ? String(newSite[key]) : "")
+        : String(newSite[key] || "").trim();
       // 주소는 공백 차이만 있으면(중복 판정에 쓰는 정규화와 동일 기준) 실질적으로 안 바뀐 것으로 본다.
       const same = key === "address" ? normalizeAddress(ov) === normalizeAddress(nv) : ov === nv;
       if (nv && !same) changes.push({ field: key, label: SITE_FIELD_LABELS[key], oldValue: ov, newValue: nv });
@@ -833,6 +897,8 @@
       fireStation: $("#siteFireStation").value.trim(),
       station119: $("#siteStation119").value.trim(),
       comprehensiveTarget,
+      comprehensiveMonthOverride: comprehensiveMonthValue,
+      operationalMonthOverride: operationalMonthValue,
       buildingType: $("#siteBuildingType").value.trim(),
       area: $("#siteArea").value.trim(),
       floorInfo: $("#siteFloorInfo").value.trim(),
@@ -979,7 +1045,7 @@
     const site = await FireDB.getSite(id);
     if (!site) { renderSites(); showScreen("screen-sites"); return; }
     $("#siteDetailInfo").innerHTML = `
-      <h2>${escapeHtml(site.name)}</h2>
+      <h2 class="site-form-title-row"><span>${escapeHtml(site.name)}</span>${inspectionScheduleBadgeHtml(site)}</h2>
       <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site.address || "-")}</span></div>
       <div class="report-meta-row"><span class="label">관할소방서</span><span>${escapeHtml(site.fireStation || "-")}</span></div>
       <div class="report-meta-row"><span class="label">관할119안전센터</span><span>${escapeHtml(site.station119 || "-")}</span></div>
@@ -1033,12 +1099,16 @@
     $("#siteContactPhone").value = site.contactPhone || "";
     autoSuggestFireStation(site.address || "");
     $("#siteStation119").value = site.station119 || "";
-    renderComprehensiveToggle(typeof site.comprehensiveTarget === "boolean" ? site.comprehensiveTarget : null);
     $("#siteBuildingType").value = site.buildingType || "";
     $("#siteArea").value = site.area || "";
     $("#siteFloorInfo").value = site.floorInfo || "";
     $("#siteApprovalDate").value = site.approvalDate || "";
     $("#siteStructure").value = site.structure || "";
+    // renderComprehensiveToggle이 renderMonthPickerButtons도 함께 호출하므로, 그 안에서 읽는
+    // siteApprovalDate 값이 이미 채워진 뒤(위 줄들 이후)에 불러야 한다.
+    comprehensiveMonthValue = typeof site.comprehensiveMonthOverride === "number" ? site.comprehensiveMonthOverride : null;
+    operationalMonthValue = typeof site.operationalMonthOverride === "number" ? site.operationalMonthOverride : null;
+    renderComprehensiveToggle(typeof site.comprehensiveTarget === "boolean" ? site.comprehensiveTarget : null);
     $("#siteFireManagerName").value = site.fireManagerName || "";
     $("#siteFireManagerPhone").value = site.fireManagerPhone || "";
     $("#siteFireManagerAppointDate").value = site.fireManagerAppointDate || "";

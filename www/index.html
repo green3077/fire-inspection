@@ -80,6 +80,16 @@
   </div>
 </div>
 
+<div id="monthPickerModal" class="modal-overlay hidden no-print">
+  <div class="modal-box">
+    <div class="modal-message" id="monthPickerTitle">월 선택</div>
+    <div class="month-picker-grid" id="monthPickerGrid"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="monthPickerCancelBtn">취소</button>
+    </div>
+  </div>
+</div>
+
 <div id="photoViewerModal" class="photo-viewer-overlay hidden no-print">
   <button class="photo-viewer-close" id="btnClosePhotoViewer" type="button">×</button>
   <button class="photo-viewer-nav photo-viewer-prev" id="btnPhotoViewerPrev" type="button">‹</button>
@@ -231,6 +241,10 @@
         <div class="field"><span>사용승인일</span><input type="text" id="siteApprovalDate" placeholder="예: 2010-05-01"></div>
       </div>
       <div class="field"><span>구조</span><input type="text" id="siteStructure" placeholder="예: 철근콘크리트구조"></div>
+      <div class="field-row">
+        <div class="field"><span>종합점검</span><button type="button" class="month-picker-btn" id="btnPickComprehensiveMonth">미정</button></div>
+        <div class="field"><span>작동점검</span><button type="button" class="month-picker-btn" id="btnPickOperationalMonth">미정</button></div>
+      </div>
 
       <h2 class="list-heading">소방안전관리자</h2>
       <div class="field-row">

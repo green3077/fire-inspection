@@ -85,6 +85,40 @@ const ImportLoading = (() => {
   return { show, startSimulated, setProgress, hide };
 })();
 
+// 1~12월 중 하나를 4x3 그리드에서 고르는 모달. 고른 월(1~12) 또는 취소 시 null 반환.
+function pickMonth(title) {
+  const modal = document.getElementById("monthPickerModal");
+  const titleEl = document.getElementById("monthPickerTitle");
+  const grid = document.getElementById("monthPickerGrid");
+  const cancelBtn = document.getElementById("monthPickerCancelBtn");
+  titleEl.textContent = title;
+  grid.innerHTML = "";
+  for (let m = 1; m <= 12; m++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "month-picker-cell";
+    btn.textContent = m + "월";
+    btn.dataset.month = String(m);
+    grid.appendChild(btn);
+  }
+  modal.classList.remove("hidden");
+  return new Promise((resolve) => {
+    function cleanup(result) {
+      modal.classList.add("hidden");
+      grid.removeEventListener("click", onGridClick);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onGridClick(e) {
+      const btn = e.target.closest(".month-picker-cell");
+      if (btn) cleanup(parseInt(btn.dataset.month, 10));
+    }
+    function onCancel() { cleanup(null); }
+    grid.addEventListener("click", onGridClick);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
 // "pdf" | "hwpx" | null(취소) 반환
 function pickShareFormat() {
   const modal = document.getElementById("shareFormatModal");
