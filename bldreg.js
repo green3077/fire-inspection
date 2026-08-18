@@ -48,7 +48,8 @@ const BldReg = (() => {
     return juso;
   }
 
-  async function getBuildingRegister(juso, dataGoKrKey) {
+  // 표제부(getBrTitleInfo)/총괄표제부(getBrRecapTitleInfo)는 요청 파라미터가 동일하므로 공통 처리.
+  async function queryBldRegOp(operation, juso, dataGoKrKey) {
     const admCd = juso.admCd;
     const sigunguCd = admCd.slice(0, 5);
     const bjdongCd = admCd.slice(5, 10);
@@ -62,7 +63,7 @@ const BldReg = (() => {
       numOfRows: "5",
       pageNo: "1"
     });
-    const res = await fetch(`https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo?serviceKey=${dataGoKrKey}&${params.toString()}`);
+    const res = await fetch(`https://apis.data.go.kr/1613000/BldRgstHubService/${operation}?serviceKey=${dataGoKrKey}&${params.toString()}`);
     if (!res.ok) throw new Error("bldreg_http_" + res.status);
     const data = await res.json();
     const header = data.response && data.response.header;
@@ -76,7 +77,17 @@ const BldReg = (() => {
     return item || null;
   }
 
-  // 반환: { juso, item } / item이 null이면 대장을 찾지 못함
+  // 총괄표제부: 여러 동으로 이루어진 집합건축물(아파트 단지 등)에만 존재 - 없는 게 정상인 경우가 많음.
+  async function getRecapTitleInfo(juso, dataGoKrKey) {
+    return queryBldRegOp("getBrRecapTitleInfo", juso, dataGoKrKey);
+  }
+
+  // 표제부: 총괄표제부가 없는 일반건축물(단독주택, 상가 등) 및 집합건축물의 개별 동 정보 - 사실상 "일반건축물 정보"에 해당.
+  async function getBuildingRegister(juso, dataGoKrKey) {
+    return queryBldRegOp("getBrTitleInfo", juso, dataGoKrKey);
+  }
+
+  // 반환: { juso, item, source } / item이 null이면 대장을 찾지 못함. source: "recap"(총괄표제부) | "title"(표제부/일반건축물)
   async function lookup(address) {
     const keys = getKeys();
     if (!keys.jusoKey || !keys.dataGoKrKey) {
@@ -85,8 +96,19 @@ const BldReg = (() => {
       throw err;
     }
     const juso = await lookupAddress(address, keys.jusoKey);
-    const item = await getBuildingRegister(juso, keys.dataGoKrKey);
-    return { juso, item };
+    let item = null;
+    let source = null;
+    try {
+      item = await getRecapTitleInfo(juso, keys.dataGoKrKey);
+      if (item) source = "recap";
+    } catch (e) {
+      // 총괄표제부가 없는 건물(대부분의 일반건축물)은 이 API가 정상적으로 에러 응답을 주므로 무시하고 표제부로 폴백.
+    }
+    if (!item) {
+      item = await getBuildingRegister(juso, keys.dataGoKrKey);
+      if (item) source = "title";
+    }
+    return { juso, item, source };
   }
 
   return { getKeys, saveKeys, lookup };

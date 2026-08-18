@@ -889,7 +889,7 @@
     resultBox.classList.remove("hidden");
     resultBox.innerHTML = `<div class="report-meta-row"><span class="label">상태</span><span>건축물대장 조회 중...</span></div>`;
     try {
-      const { item } = await BldReg.lookup(address);
+      const { item, source } = await BldReg.lookup(address);
       if (!item) {
         resultBox.innerHTML = `<div class="bldreg-error">해당 주소의 건축물대장을 찾지 못했습니다. 주소를 정확히 입력했는지 확인하거나 직접 입력해주세요.</div>`;
         return;
@@ -909,8 +909,9 @@
       if (fetched.floorInfo) $("#siteFloorInfo").value = fetched.floorInfo;
       if (fetched.approvalDate) $("#siteApprovalDate").value = fetched.approvalDate;
       if (fetched.structure) $("#siteStructure").value = fetched.structure;
+      const registerLabel = item.regstrKindCdNm || (source === "recap" ? "총괄표제부" : "표제부");
       resultBox.innerHTML = `
-        <div class="report-meta-row"><span class="label">대장구분</span><span>${escapeHtml(item.regstrKindCdNm || "-")}</span></div>
+        <div class="report-meta-row"><span class="label">대장구분</span><span>${escapeHtml(registerLabel)}</span></div>
         <div class="report-meta-row"><span class="label">건물명</span><span>${escapeHtml(item.bldNm || "-")}</span></div>
         <div class="report-meta-row"><span class="label">주용도</span><span>${escapeHtml(fetched.buildingType || "-")}</span></div>
         <div class="report-meta-row"><span class="label">연면적</span><span>${escapeHtml(fetched.area ? fetched.area + " ㎡" : "-")}</span></div>
