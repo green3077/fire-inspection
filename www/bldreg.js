@@ -49,7 +49,8 @@ const BldReg = (() => {
   }
 
   // 표제부(getBrTitleInfo)/총괄표제부(getBrRecapTitleInfo)는 요청 파라미터가 동일하므로 공통 처리.
-  async function queryBldRegOp(operation, juso, dataGoKrKey) {
+  // 항상 원본 배열 그대로 반환 - 첫 항목만 필요한 호출부는 [0]을, 대지 내 모든 동이 필요한 호출부(층수/구조 집계)는 전체를 사용.
+  async function queryBldRegOpList(operation, juso, dataGoKrKey, numOfRows) {
     const admCd = juso.admCd;
     const sigunguCd = admCd.slice(0, 5);
     const bjdongCd = admCd.slice(5, 10);
@@ -60,7 +61,7 @@ const BldReg = (() => {
     const params = new URLSearchParams({
       sigunguCd, bjdongCd, platGbCd, bun, ji,
       _type: "json",
-      numOfRows: "5",
+      numOfRows: String(numOfRows),
       pageNo: "1"
     });
     const res = await fetch(`https://apis.data.go.kr/1613000/BldRgstHubService/${operation}?serviceKey=${dataGoKrKey}&${params.toString()}`);
@@ -71,10 +72,15 @@ const BldReg = (() => {
       throw new Error("bldreg_error: " + (header ? `${header.resultCode} ${header.resultMsg}` : "unknown"));
     }
     const items = data.response.body && data.response.body.items;
-    if (!items || items === "") return null;
+    if (!items || items === "") return [];
     let item = items.item;
-    if (Array.isArray(item)) item = item[0];
-    return item || null;
+    if (!Array.isArray(item)) item = item ? [item] : [];
+    return item;
+  }
+
+  async function queryBldRegOp(operation, juso, dataGoKrKey) {
+    const list = await queryBldRegOpList(operation, juso, dataGoKrKey, 5);
+    return list[0] || null;
   }
 
   // 총괄표제부: 여러 동으로 이루어진 집합건축물(아파트 단지 등)에만 존재 - 없는 게 정상인 경우가 많음.
@@ -87,7 +93,35 @@ const BldReg = (() => {
     return queryBldRegOp("getBrTitleInfo", juso, dataGoKrKey);
   }
 
-  // 반환: { juso, item, source } / item이 null이면 대장을 찾지 못함. source: "recap"(총괄표제부) | "title"(표제부/일반건축물)
+  // 대지 내 모든 동의 표제부 목록 - 총괄표제부에는 없는 층수/구조를 동별로 집계하기 위함 (동이 많은 대단지 대비 넉넉히 100건).
+  async function getBuildingRegisterList(juso, dataGoKrKey) {
+    return queryBldRegOpList("getBrTitleInfo", juso, dataGoKrKey, 100);
+  }
+
+  // 여러 동의 표제부에서 층수(최고~최저)와 구조(중복 제거) 집계 - 총괄표제부는 대지 전체 집계값만 갖고
+  // 동별 층수/구조는 갖지 않으므로, 그 값이 필요할 때만 이 집계를 사용한다.
+  function summarizeFloorsAndStructure(items) {
+    let grndMin = null, grndMax = null, ugrndMin = null, ugrndMax = null;
+    const structures = [];
+    for (const it of items) {
+      const g = parseInt(it.grndFlrCnt, 10);
+      if (!isNaN(g)) {
+        grndMin = grndMin === null ? g : Math.min(grndMin, g);
+        grndMax = grndMax === null ? g : Math.max(grndMax, g);
+      }
+      const u = parseInt(it.ugrndFlrCnt, 10);
+      if (!isNaN(u)) {
+        ugrndMin = ugrndMin === null ? u : Math.min(ugrndMin, u);
+        ugrndMax = ugrndMax === null ? u : Math.max(ugrndMax, u);
+      }
+      const s = (it.strctCdNm || "").trim();
+      if (s && !structures.includes(s)) structures.push(s);
+    }
+    return { grndMin, grndMax, ugrndMin, ugrndMax, structures };
+  }
+
+  // 반환: { juso, item, source, floorSummary } / item이 null이면 대장을 찾지 못함. source: "recap"(총괄표제부) | "title"(표제부/일반건축물)
+  // floorSummary: item 자체에 층수/구조 정보가 없을 때(주로 총괄표제부인 경우)만 대지 내 모든 동의 표제부를 조회해 채운 값. 없으면 null.
   async function lookup(address) {
     const keys = getKeys();
     if (!keys.jusoKey || !keys.dataGoKrKey) {
@@ -108,7 +142,16 @@ const BldReg = (() => {
       item = await getBuildingRegister(juso, keys.dataGoKrKey);
       if (item) source = "title";
     }
-    return { juso, item, source };
+    let floorSummary = null;
+    if (item && (!(item.grndFlrCnt || item.ugrndFlrCnt) || !item.strctCdNm)) {
+      try {
+        const titleItems = await getBuildingRegisterList(juso, keys.dataGoKrKey);
+        floorSummary = summarizeFloorsAndStructure(titleItems);
+      } catch (e) {
+        // 동별 표제부 목록 조회가 실패해도 이미 얻은 item(연면적 등)은 그대로 유지 - 층수/구조만 비어있게 된다.
+      }
+    }
+    return { juso, item, source, floorSummary };
   }
 
   return { getKeys, saveKeys, lookup };

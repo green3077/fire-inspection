@@ -889,18 +889,29 @@
     resultBox.classList.remove("hidden");
     resultBox.innerHTML = `<div class="report-meta-row"><span class="label">상태</span><span>건축물대장 조회 중...</span></div>`;
     try {
-      const { item, source } = await BldReg.lookup(address);
+      const { item, source, floorSummary } = await BldReg.lookup(address);
       if (!item) {
         resultBox.innerHTML = `<div class="bldreg-error">해당 주소의 건축물대장을 찾지 못했습니다. 주소를 정확히 입력했는지 확인하거나 직접 입력해주세요.</div>`;
         return;
       }
       const rawApprovalDate = item.useAprDay || "";
+      // 총괄표제부는 대지 전체 집계값(연면적 등)만 갖고 동별 층수/구조는 없다 - 이 경우
+      // floorSummary(대지 내 모든 동의 표제부에서 집계)로 층수는 최고~최저 범위, 구조는 중복 제거한 목록으로 채운다.
+      let floorInfo = [item.grndFlrCnt ? `지상 ${item.grndFlrCnt}층` : "", item.ugrndFlrCnt ? `지하 ${item.ugrndFlrCnt}층` : ""].filter(Boolean).join(" / ");
+      if (!floorInfo && floorSummary) {
+        const rangeText = (min, max, label) => (min == null ? "" : min === max ? `${label} ${max}층` : `${label} ${min}~${max}층`);
+        floorInfo = [rangeText(floorSummary.grndMin, floorSummary.grndMax, "지상"), rangeText(floorSummary.ugrndMin, floorSummary.ugrndMax, "지하")].filter(Boolean).join(" / ");
+      }
+      let structure = item.strctCdNm || "";
+      if (!structure && floorSummary && floorSummary.structures.length) {
+        structure = floorSummary.structures.join(", ");
+      }
       const fetched = {
         buildingType: item.mainPurpsCdNm || "",
         area: item.totArea || "",
-        floorInfo: [item.grndFlrCnt ? `지상 ${item.grndFlrCnt}층` : "", item.ugrndFlrCnt ? `지하 ${item.ugrndFlrCnt}층` : ""].filter(Boolean).join(" / "),
+        floorInfo,
         approvalDate: /^\d{8}$/.test(rawApprovalDate) ? `${rawApprovalDate.slice(0, 4)}-${rawApprovalDate.slice(4, 6)}-${rawApprovalDate.slice(6, 8)}` : rawApprovalDate,
-        structure: item.strctCdNm || ""
+        structure
       };
       // 건축물대장이 실제로 값을 준 항목만 덮어쓴다 - 특정 항목을 비워서 응답하면(예: 연면적 "-")
       // 자료 불러오기로 이미 채워둔 값을 빈 값으로 지워버리지 않도록 보존한다.
