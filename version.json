@@ -1,6 +1,6 @@
 {
-  "versionCode": 22,
-  "versionName": "1.21",
+  "versionCode": 23,
+  "versionName": "1.22",
   "apkUrl": "https://green3077.github.io/sobang1004/fire-inspection.apk",
-  "notes": "이행완료보고서(HWPX) 사진이 이상하게(아주 작게) 나오던 문제 수정 - 아이콘/그림(SVG) 파일이 사진으로 잘못 등록되지 않도록 방지, 실제 사진만 표에 꽉 차게 표시"
+  "notes": "이행완료보고서(HWPX) 사진 관련 2가지 버그 수정 - (1) 투명 배경(PNG) 사진이 PC 한글에서 깨진 그림 아이콘으로 보이던 문제, (2) 사진이 실제 한글에서 아주 작게(수mm) 표시되던 문제"
 }
