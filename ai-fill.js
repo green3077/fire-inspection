@@ -71,7 +71,16 @@ const AiFill = (() => {
     return ["pdf", "xlsx", "xls", "docx", "hwpx"].includes(ext) || !!IMAGE_MEDIA_TYPES[ext];
   }
 
-  async function buildParts(file, ext, instruction) {
+  // xlsx/docx/hwpx는 AI 호출 전에 미리 텍스트로 뽑아둔다 - 표/PDF/사진과 달리 이 텍스트는
+  // detectSprinklerFromText로 AI 응답을 보완하는 데도 재사용된다.
+  async function extractDocText(file, ext) {
+    if (ext === "xlsx" || ext === "xls") return excelToText(file);
+    if (ext === "docx") return wordToText(file);
+    if (ext === "hwpx") return hwpxToText(file);
+    return null;
+  }
+
+  async function buildParts(file, ext, instruction, docText) {
     if (ext === "pdf") {
       const data = await fileToBase64(file);
       return [{ inline_data: { mime_type: "application/pdf", data } }, { text: instruction }];
@@ -80,12 +89,23 @@ const AiFill = (() => {
       const data = await fileToBase64(file);
       return [{ inline_data: { mime_type: IMAGE_MEDIA_TYPES[ext], data } }, { text: instruction }];
     }
-    let text = "";
-    if (ext === "xlsx" || ext === "xls") text = await excelToText(file);
-    else if (ext === "docx") text = await wordToText(file);
-    else if (ext === "hwpx") text = await hwpxToText(file);
-    if (!text || !text.trim()) return null;
-    return [{ text: `${instruction}\n\n--- 문서 내용 ---\n${text.slice(0, 60000)}` }];
+    if (!docText || !docText.trim()) return null;
+    return [{ text: `${instruction}\n\n--- 문서 내용 ---\n${docText.slice(0, 60000)}` }];
+  }
+
+  // 소방시설 세부현황표 같은 문서는 "설비의 종류" 체크박스가 같은 페이지에 여러 번(가압송수장치별로)
+  // 반복돼 표 구조가 사라진 평문 텍스트만 보고 훑는 AI가 스프링클러 체크 여부를 놓치는 경우가 있다.
+  // "]" 바로 뒤(공백 허용)에 "스프링클러설비"가 붙어 있는 자리만 체크박스로 인정해 "간이스프링클러설비",
+  // "화재조기진압용스프링클러설비", "포워터스프링클러설비" 같은 다른 설비명과는 구분한다.
+  function detectSprinklerFromText(text) {
+    const re = /\[([^\]]{0,4})\]\s*스프링클러설비/g;
+    let m, foundAny = false, foundChecked = false;
+    while ((m = re.exec(text))) {
+      foundAny = true;
+      if (/[√✓]/.test(m[1])) foundChecked = true;
+    }
+    if (!foundAny) return "";
+    return foundChecked ? "예" : "아니오";
   }
 
   // 우리 쪽 JSON 스키마(소문자 type)를 Gemini의 responseSchema 형식(대문자 Type)으로 변환.
@@ -195,9 +215,16 @@ const AiFill = (() => {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 거래처(현장) 등록에 필요한 정보를 추출해줘.";
-    const parts = await buildParts(file, ext, instruction);
+    const docText = await extractDocText(file, ext);
+    const parts = await buildParts(file, ext, instruction, docText);
     if (!parts) return { failed: true, typeLabel: extTypeLabel(ext) };
     const fields = await callGemini({ system: CLIENT_SYSTEM, parts, schema: CLIENT_SCHEMA, maxTokens: 4096 });
+    // AI가 스프링클러 여부를 "예"/"아니오"로 못 정했으면(체크박스 표 구조가 깨져 못 읽은 경우 등)
+    // 같은 텍스트에서 체크박스를 직접 찾아 보완한다.
+    if (fields.sprinklerInstalled !== "예" && fields.sprinklerInstalled !== "아니오" && docText) {
+      const detected = detectSprinklerFromText(docText);
+      if (detected) fields.sprinklerInstalled = detected;
+    }
     const filledCount = Object.values(fields).filter((v) => v && String(v).trim()).length;
     return { fields, typeLabel: extTypeLabel(ext) + " (AI 분석)", lowConfidence: false, failed: filledCount === 0 };
   }
