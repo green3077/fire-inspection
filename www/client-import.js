@@ -332,6 +332,22 @@ const ClientImport = (() => {
     }
   }
 
+  // 소방시설 세부현황표 같은 문서는 "설비의 종류" 체크박스가 표 셀 안에 있어(예: hwpx의 hp:tbl/hp:tc)
+  // 위쪽의 줄/셀 기반 라벨:값 추출 로직들이 놓친다 - "]" 바로 뒤(공백 허용)에 "스프링클러설비"가 붙어
+  // 있는 자리만 체크박스로 인정해 "간이스프링클러설비", "화재조기진압용스프링클러설비", "포워터스프링클러설비"
+  // 같은 다른 설비명과 구분한다. ai-fill.js의 detectSprinklerFromText와 같은 규칙 - AI를 안 거치는(또는
+  // AI 실패로 폴백된) 이 정규식 경로에서도 종합점검대상(app.js) 자동판단에 스프링클러 여부가 필요하다.
+  function detectSprinklerFromText(text) {
+    const re = /\[([^\]]{0,4})\]\s*스프링클러설비/g;
+    let m, foundAny = false, foundChecked = false;
+    while ((m = re.exec(text))) {
+      foundAny = true;
+      if (/[√✓]/.test(m[1])) foundChecked = true;
+    }
+    if (!foundAny) return "";
+    return foundChecked ? "예" : "아니오";
+  }
+
   function extractFields(text, rows) {
     const result = {};
 
@@ -365,6 +381,8 @@ const ClientImport = (() => {
     ["fireManagerAppointDate", "fireManagerEduDate"].forEach((f) => {
       if (result[f]) result[f] = normalizeDate(result[f]);
     });
+    const sprinklerInstalled = detectSprinklerFromText(lines.join("\n"));
+    if (sprinklerInstalled) result.sprinklerInstalled = sprinklerInstalled;
     return result;
   }
 
