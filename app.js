@@ -821,7 +821,7 @@
             const convertedHwpx = await ClientImport.convertHwpToHwpxViaService(file);
             if (convertedHwpx) aiFile = new File([convertedHwpx], file.name.replace(/\.hwp$/i, ".hwpx"));
           }
-          const aiResult = await AiFill.analyzeClientFile(aiFile);
+          const aiResult = await AiFill.analyzeClientFile(aiFile, (msg) => ImportLoading.setStatusText(msg));
           if (!aiResult.unsupported) result = aiResult;
         } catch (aiErr) {
           result = null; // AI 분석 실패 시 기존 방식으로 폴백
@@ -1040,11 +1040,13 @@
       }
       const rawApprovalDate = item.useAprDay || "";
       // 총괄표제부는 대지 전체 집계값(연면적 등)만 갖고 동별 층수/구조는 없다 - 이 경우
-      // floorSummary(대지 내 모든 동의 표제부에서 집계)로 층수는 최고~최저 범위, 구조는 중복 제거한 목록으로 채운다.
-      let floorInfo = [item.grndFlrCnt ? `지상 ${item.grndFlrCnt}층` : "", item.ugrndFlrCnt ? `지하 ${item.ugrndFlrCnt}층` : ""].filter(Boolean).join(" / ");
+      // floorSummary(대지 내 모든 동의 표제부에서 집계)로 층수/구조를 채운다.
+      // 동마다 층수가 달라도(floorSummary) 범위 대신 그중 가장 높은 층수만 표시.
+      // 지하는 0층(=지하 없음)이면 "지하 0층"이 아니라 "지하 -"로 표시.
+      const floorText = (max, label) => (max == null ? "" : label === "지하" && max === 0 ? "지하 -" : `${label} ${max}층`);
+      let floorInfo = [floorText(item.grndFlrCnt ? parseInt(item.grndFlrCnt, 10) : null, "지상"), floorText(item.ugrndFlrCnt ? parseInt(item.ugrndFlrCnt, 10) : null, "지하")].filter(Boolean).join(" / ");
       if (!floorInfo && floorSummary) {
-        const rangeText = (min, max, label) => (min == null ? "" : min === max ? `${label} ${max}층` : `${label} ${min}~${max}층`);
-        floorInfo = [rangeText(floorSummary.grndMin, floorSummary.grndMax, "지상"), rangeText(floorSummary.ugrndMin, floorSummary.ugrndMax, "지하")].filter(Boolean).join(" / ");
+        floorInfo = [floorText(floorSummary.grndMax, "지상"), floorText(floorSummary.ugrndMax, "지하")].filter(Boolean).join(" / ");
       }
       let structure = item.strctCdNm || "";
       if (!structure && floorSummary && floorSummary.structures.length) {

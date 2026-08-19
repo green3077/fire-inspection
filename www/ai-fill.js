@@ -143,6 +143,10 @@ const AiFill = (() => {
     }
   }
 
+  // 모델 하나당 응답 대기 한도 - 예전엔 타임아웃이 전혀 없어서 프록시/모델이 응답 없이 멈추면
+  // 호출부의 진행률 표시가 (90%에서 멈춘 채) 끝없이 기다리는 문제가 있었다.
+  const GEMINI_TIMEOUT_MS = 25000;
+
   async function callGemini({ system, parts, schema, maxTokens }) {
     const body = {
       systemInstruction: { parts: [{ text: system }] },
@@ -157,30 +161,42 @@ const AiFill = (() => {
         thinkingConfig: { thinkingBudget: 512 }
       }
     };
-    let last = null;
+    // 모델 하나가 실패(4xx/5xx/타임아웃/빈 응답 등 사유 불문)하면 바로 다음 모델로 폴백한다 - 예전엔
+    // 400/404만 재시도하고 그 외(예: 일시적 5xx)는 즉시 실패 처리해서, 첫 모델이 가끔 흔들릴 때마다
+    // AI 결과 대신 정확도가 낮은 정규식 폴백으로 튀어 "불러올 때마다 결과가 다르다"는 원인이 됐다.
+    let lastErr = null;
     for (const model of GEMINI_MODELS) {
-      const res = await fetch(geminiUrl(model), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      last = { res, model };
-      if (![400, 404].includes(res.status)) break;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+      try {
+        const res = await fetch(geminiUrl(model), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          lastErr = new Error(`gemini_api_${res.status}_${model}: ${friendlyError(errText)}`);
+          continue;
+        }
+        const data = await res.json();
+        const candidate = data?.candidates?.[0];
+        if (!candidate) {
+          const blockReason = data?.promptFeedback?.blockReason;
+          lastErr = new Error(blockReason ? `gemini_blocked_${blockReason}` : "gemini_no_candidate");
+          continue;
+        }
+        const text = (candidate.content?.parts || []).map((p) => p.text || "").join("");
+        if (!text) { lastErr = new Error("gemini_no_text"); continue; }
+        return extractJson(text);
+      } catch (e) {
+        lastErr = e && e.name === "AbortError" ? new Error(`gemini_timeout_${model}`) : e;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
-    const { res, model } = last;
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`gemini_api_${res.status}_${model}: ${friendlyError(errText)}`);
-    }
-    const data = await res.json();
-    const candidate = data?.candidates?.[0];
-    if (!candidate) {
-      const blockReason = data?.promptFeedback?.blockReason;
-      throw new Error(blockReason ? `gemini_blocked_${blockReason}` : "gemini_no_candidate");
-    }
-    const text = (candidate.content?.parts || []).map((p) => p.text || "").join("");
-    if (!text) throw new Error("gemini_no_text");
-    return extractJson(text);
+    throw lastErr || new Error("gemini_all_models_failed");
   }
 
   const CLIENT_FIELD_DESCRIPTIONS = {
@@ -211,14 +227,31 @@ const AiFill = (() => {
 
   const CLIENT_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 문서(소방시설 자체점검 결과보고서, 명함, 안내문 등)에서 요청된 항목을 정확히 추출하세요. 문서에 명시적으로 없는 정보는 절대 추측하지 말고 반드시 빈 문자열(\"\")로 남기세요. 전화번호와 날짜는 지정된 형식으로 정규화하세요. 같은 사람이 여러 역할(예: 관계인이자 소방안전관리자)을 겸하는 경우 해당하는 모든 필드에 채워주세요. 반드시 JSON으로만 응답하세요.";
 
-  async function analyzeClientFile(file) {
+  // 1차 추출 결과를 문서와 다시 대조해 틀린 값을 바로잡는 2차 "검수" 호출용 프롬프트 - 같은 프롬프트를
+  // 두 번 그대로 반복하면 낮은 temperature 탓에 같은 실수를 그대로 반복하기 쉬우므로, 1차 결과를 같이
+  // 보여주고 "검토해서 고치라"는 다른 역할을 줘야 실제로 정확도가 올라간다.
+  const CLIENT_REVIEW_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 검수 담당자입니다. 첨부된 문서에서 다른 도우미가 1차로 추출한 결과(JSON)가 아래에 있습니다. 문서 원본과 항목 하나하나를 다시 대조해서: 문서 내용과 다르게 채워진 값은 문서에 맞게 고치고, 문서에 있는데 빠진 값은 채우고, 문서에 근거 없이 채워진 값(추측)은 빈 문자열(\"\")로 비우세요. 확실하지 않으면 절대 추측하지 말고 빈 문자열로 남기세요. 전화번호와 날짜는 지정된 형식으로 정규화하세요. 최종 검수 결과만 JSON으로 응답하세요.";
+
+  // onStatus(선택): 2차 검수 단계로 넘어갈 때 로딩 화면 문구를 바꾸기 위한 콜백.
+  async function analyzeClientFile(file, onStatus) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 거래처(현장) 등록에 필요한 정보를 추출해줘.";
     const docText = await extractDocText(file, ext);
     const parts = await buildParts(file, ext, instruction, docText);
     if (!parts) return { failed: true, typeLabel: extTypeLabel(ext) };
-    const fields = await callGemini({ system: CLIENT_SYSTEM, parts, schema: CLIENT_SCHEMA, maxTokens: 4096 });
+    let fields = await callGemini({ system: CLIENT_SYSTEM, parts, schema: CLIENT_SCHEMA, maxTokens: 4096 });
+
+    // 정확도를 높이기 위해 1차 결과를 문서와 다시 대조하는 2차 검수를 한 번 더 거친다. 검수 자체가
+    // 실패해도(타임아웃/오류 등) 전체를 실패시키지 않고 1차 결과를 그대로 쓴다 - 검수는 어디까지나 보정용.
+    let reviewed = false;
+    try {
+      if (onStatus) onStatus("AI가 결과를 한 번 더 검수하고 있습니다.");
+      const reviewParts = [...parts, { text: `\n\n--- 1차 추출 결과(JSON) ---\n${JSON.stringify(fields)}` }];
+      fields = await callGemini({ system: CLIENT_REVIEW_SYSTEM, parts: reviewParts, schema: CLIENT_SCHEMA, maxTokens: 4096 });
+      reviewed = true;
+    } catch (e) { /* 검수 실패 시 1차 결과 그대로 사용 */ }
+
     // AI가 스프링클러 여부를 "예"/"아니오"로 못 정했으면(체크박스 표 구조가 깨져 못 읽은 경우 등)
     // 같은 텍스트에서 체크박스를 직접 찾아 보완한다.
     if (fields.sprinklerInstalled !== "예" && fields.sprinklerInstalled !== "아니오" && docText) {
@@ -226,7 +259,7 @@ const AiFill = (() => {
       if (detected) fields.sprinklerInstalled = detected;
     }
     const filledCount = Object.values(fields).filter((v) => v && String(v).trim()).length;
-    return { fields, typeLabel: extTypeLabel(ext) + " (AI 분석)", lowConfidence: false, failed: filledCount === 0 };
+    return { fields, typeLabel: extTypeLabel(ext) + (reviewed ? " (AI 2중 검수)" : " (AI 분석)"), lowConfidence: false, failed: filledCount === 0 };
   }
 
   const DEFICIENCY_SCHEMA = {

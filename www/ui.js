@@ -75,6 +75,12 @@ const ImportLoading = (() => {
     if (statusText && textEl()) textEl().innerHTML = statusText + "<br>잠시만 기다려주세요.";
   }
 
+  // setProgress와 달리 진행률(퍼센트)은 그대로 두고 문구만 바꾼다 - AI 1차 분석 -> 2차 검수처럼
+  // 실제 진행률을 모르는 단계가 이어질 때, 진행 중이던 시뮬레이션 바를 뒤로 되돌리지 않기 위함.
+  function setStatusText(statusText) {
+    if (statusText && textEl()) textEl().innerHTML = statusText + "<br>잠시만 기다려주세요.";
+  }
+
   function hide() {
     clearInterval(simTimer);
     simTimer = null;
@@ -82,7 +88,7 @@ const ImportLoading = (() => {
     setTimeout(() => { if (overlay()) overlay().classList.add("hidden"); }, 150);
   }
 
-  return { show, startSimulated, setProgress, hide };
+  return { show, startSimulated, setProgress, setStatusText, hide };
 })();
 
 // 1~12월 중 하나를 4x3 그리드에서 고르는 모달. 고른 월(1~12) 또는 취소 시 null 반환.

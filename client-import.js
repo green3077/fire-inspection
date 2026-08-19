@@ -97,12 +97,30 @@ const ClientImport = (() => {
     return m ? m[0] : null;
   }
 
+  // 좁은 세로 칸(예: "특정소방대상물명" 표지 라벨)의 글자가 PDF 텍스트 추출 시 "대","상","물"처럼
+  // 한 글자씩 따로따로 셀로 쪼개져 나오는 경우가 있다 - 이런 한두 글자짜리 조각들은 개별로는
+  // SKIP_TOKENS와 안 겹쳐서 걸러지지 않고, 그 결과 그 다음 줄의 진짜 주소/값 대신 이 조각이
+  // 값으로 잘못 채택됨(예: 주소 칸에 "대상물"이 들어가는 버그). i부터 이어지는 한두 글자 조각들을
+  // 합쳐봤을 때 SKIP_TOKENS 중 하나가 되면, 그 조각들이 차지하는 칸 수(span)를 돌려줘 통째로 건너뛴다.
+  function skippableFragmentSpan(flat, i) {
+    if (!/^[가-힣]{1,2}$/.test((flat[i].text || "").trim())) return 0;
+    let joined = "";
+    for (let j = i; j < Math.min(i + 4, flat.length); j++) {
+      if (!/^[가-힣]{1,2}$/.test((flat[j].text || "").trim())) break;
+      joined += flat[j].text.trim();
+      if (SKIP_TOKENS.some((t) => joined.includes(t))) return j - i + 1;
+    }
+    return 0;
+  }
+
   // 표(rows)에서 라벨 칸을 찾고, 뒤따르는 칸들 중 첫 실질 내용 칸을 값으로 채택.
   // 정부 서식 PDF는 라벨과 값이 같은 줄/칸이 아니라 표 구조상 여러 칸 떨어져 나오는 경우가 많아
   // 단순 "같은 줄" 매칭 대신 칸 단위로 순서대로 훑으며 체크박스/구획 경계를 건너뛴다.
   function findValueCellAfter(flat, i) {
     for (let j = i + 1; j < Math.min(i + 8, flat.length); j++) {
       if (isBoundary(flat[j].text)) break;
+      const span = skippableFragmentSpan(flat, j);
+      if (span > 0) { j += span - 1; continue; }
       if (isSkippableCell(flat[j].text)) continue;
       if (looksLikeAnotherLabel(flat[j].text)) break;
       return j;
@@ -305,9 +323,12 @@ const ClientImport = (() => {
     }
     const floorMatch = fullText.match(REPORT_FLOOR_RE);
     if (floorMatch && (floorMatch[1] || floorMatch[2]) && !result.floorInfo) {
+      // 지하는 0층(=지하 없음)이면 "지하 0층"이 아니라 "지하 -"로 표시(app.js의 건축물대장 조회 표시와 동일 규칙).
+      const grnd = floorMatch[1] ? parseInt(normalizeDigits(floorMatch[1]), 10) : null;
+      const ugrnd = floorMatch[2] ? parseInt(normalizeDigits(floorMatch[2]), 10) : null;
       result.floorInfo = [
-        floorMatch[1] ? `지상 ${normalizeDigits(floorMatch[1])}층` : "",
-        floorMatch[2] ? `지하 ${normalizeDigits(floorMatch[2])}층` : ""
+        grnd != null ? `지상 ${grnd}층` : "",
+        ugrnd != null ? (ugrnd === 0 ? "지하 -" : `지하 ${ugrnd}층`) : ""
       ].filter(Boolean).join(" / ");
     }
   }
