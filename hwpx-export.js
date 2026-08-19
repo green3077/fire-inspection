@@ -254,7 +254,7 @@ const HwpxExport = (() => {
   }
 
   // 셀 안의 "사진" 안내 문단을 지우고 그림 개체를 넣은 새 문단으로 교체. 이미지가 없으면 "사진 없음" 텍스트만 남김.
-  async function setCellPhoto(tc, blob, cellWidthHwp, cellHeightHwp, imageState) {
+  async function setCellPhoto(tc, blob, cellWidthHwp, imageState) {
     const doc = tc.ownerDocument;
     const subList = tc.getElementsByTagNameNS(HP, "subList")[0];
     const paras = Array.from(subList.getElementsByTagNameNS(HP, "p"));
@@ -291,11 +291,15 @@ const HwpxExport = (() => {
       return;
     }
 
-    // 원본 비율(width/height)을 그대로 유지한 채 셀 안에 들어가도록만 축소(contain) - 자르지 않으므로
-    // 셀 비율과 사진 비율이 다르면 남는 방향에 여백이 생기지만, 잘려나가는 부분은 전혀 없다.
+    // 원본 비율(width/height)을 그대로 유지한 채 "폭"에 맞춰서만 채운다(자르지 않음) - 표의 칸 폭은
+    // 전체 열에 고정된 값이라 반드시 지켜야 하지만, 칸 높이는 한글이 실제 내용(그림 크기)에 맞춰
+    // 행을 자동으로 늘려주는 값이다(appendValueLineInLabelCell의 cellSz 관련 주석 참고). 예전에는
+    // 폭/높이 둘 다 원래 칸 크기(가로가 긴 landscape 형태, 20308x15293) 안에 들어가도록 축소했는데,
+    // 세로로 찍은(portrait) 현장 사진은 그러면 높이가 먼저 꽉 차서 폭이 칸의 절반 정도로만 줄어들어
+    // "사진이 작게(칸 절반만 차지) 나온다"는 문제가 있었다 - 높이는 어차피 행이 알아서 늘어나므로,
+    // 항상 폭 기준으로만 맞추면 세로 사진도 칸 폭을 꽉 채우고(행만 자동으로 길어짐) 잘리지도 않는다.
     const maxW = cellWidthHwp - 200;
-    const maxH = cellHeightHwp - 200;
-    const scale = Math.min(maxW / width, maxH / height);
+    const scale = maxW / width;
     const hwpWidth = Math.max(1000, Math.round(width * scale));
     const hwpHeight = Math.max(1000, Math.round(height * scale));
 
@@ -334,8 +338,7 @@ const HwpxExport = (() => {
     const templateRow = trs[3].cloneNode(true);
     for (let i = 3; i < trs.length; i++) trs[i].remove();
 
-    const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준)
-    const rowHeightHwp = 15293;
+    const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준) - 높이는 한글이 내용에 맞춰 자동으로 늘리므로 필요 없음
 
     for (let i = 0; i < items.length; i++) {
       const def = items[i];
@@ -362,8 +365,8 @@ const HwpxExport = (() => {
       // 사진으로 채워짐") - 뒤에서부터 찾아 항상 가장 최근 것이 이기도록 한다.
       const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
       const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
-      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
-      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, rowHeightHwp, imageState);
+      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, imageState);
+      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, imageState);
 
       tbl.appendChild(row);
     }
