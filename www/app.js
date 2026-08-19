@@ -96,11 +96,14 @@
 
   // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
   // 아무 일도 하지 않고, 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
+  // 반환하는 프로미스는 uploadToSite의 결과를 그대로 넘긴다(꺼져있거나 실패하면 null) - 대부분의
+  // 호출부는 결과를 무시해도 되지만(그래서 fire-and-forget), 실패를 사용자에게 알려야 하는 곳
+  // (예: 지적사항 사진)은 이 반환값으로 켜져 있는데도 실패한 경우만 구분해 알릴 수 있다.
   function backupToDrive(siteId, category, filename, blob) {
-    if (!blob) return;
-    (siteId ? FireDB.getSite(siteId) : Promise.resolve(null))
+    if (!blob) return Promise.resolve(null);
+    return (siteId ? FireDB.getSite(siteId) : Promise.resolve(null))
       .then((site) => DriveBackup.uploadToSite(site ? site.name : null, category, filename, blob))
-      .catch(() => {});
+      .catch(() => null);
   }
 
   function todayISO() {
@@ -431,6 +434,17 @@
       showScreen(tab);
     });
   });
+
+  // 홈 화면의 버전 표시(.app-version-tag)가 탭바 바로 위에 오려면 실제 탭바 높이를 알아야 한다 -
+  // 예전에는 44px로 고정해뒀는데, 그 뒤 탭바 폰트/아이콘 크기를 키우면서 탭바가 더 높아져 버전
+  // 표시가 탭바 밑에 깔려 잘려 보이는 원인이 됐다(실제 사용자가 겪은 문제). 기기별 폰트 렌더링에
+  // 따라 탭바 높이가 달라질 수 있어 고정값 대신 실제 렌더링된 높이를 CSS 변수로 넘긴다.
+  function syncTabBarHeightVar() {
+    const bar = $(".tab-bar");
+    if (bar) document.documentElement.style.setProperty("--tab-bar-height", bar.offsetHeight + "px");
+  }
+  syncTabBarHeightVar();
+  window.addEventListener("resize", syncTabBarHeightVar);
 
   // ================= 현장 =================
   function siteCardHtml(s, lastBySite) {
@@ -1635,7 +1649,16 @@
         createdAt: new Date().toISOString()
       });
       targetArr.push(photo.id);
-      backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file);
+      // 이 사진은 나중에 다른 기기(PC 등)에서 이행완료보고서를 만들 때 로컬에 원본이 없으면
+      // 구글 드라이브 백업본으로 대신 채워진다(위 openCompletionReport 참고) - 그래서 백업이
+      // 꺼져 있지 않은데도 실패하면(네트워크/서버 문제 등) 조용히 넘기지 않고 바로 알려준다.
+      // 사진은 이미 이 기기 로컬에 저장됐으므로, 알림은 계속 작업을 막지 않는다.
+      backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file)
+        .then((result) => {
+          if (!result && DriveBackup.isEnabled()) {
+            toast("사진은 저장됐지만 구글 드라이브 자동 백업에는 실패했습니다(네트워크 확인).", "error");
+          }
+        });
     }
     const changes = { beforePhotoIds: def.beforePhotoIds, afterPhotoIds: def.afterPhotoIds };
     // 이행후 사진이 곧 수리 완료의 증거이므로, 한 장이라도 올라오면 이행완료를 자동으로 체크해준다.
@@ -1936,12 +1959,43 @@
     `;
     lastCompletionReportData = { site, company, resolved, photoMap, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation };
     completionReportPages = Array.from($("#completionReportContent").querySelectorAll(".report-page"));
-    showCompletionReportPage(0);
+    // showScreen을 먼저 해서 컨테이너가 실제로 화면에 보이게 만든 다음에 축소 계산을 해야 한다 -
+    // display:none 상태에서 재면 폭이 0으로 나와 축소 비율 계산이 틀어진다.
     showScreen("screen-completion-report");
+    showCompletionReportPage(0);
+    // 사진(<img>)은 비동기로 로드되며 로드 후 표 높이가 바뀔 수 있어, 다 실린 뒤 축소를 다시 맞춘다.
+    $$("#completionReportContent img").forEach((img) => {
+      if (!img.complete) img.addEventListener("load", fitCompletionReportScale, { once: true });
+    });
   }
 
   let completionReportPages = [];
   let completionReportPageIndex = 0;
+
+  // 표(.official-form)의 실제 폭(가로 스크롤이 필요했던 그 폭)이 화면에 안 들어가면, 표를 줄바꿈/재배치
+  // 하지 않고 가로세로 비율 그대로 통째로 축소(transform: scale)해서 스크롤 없이 한 화면에 담는다.
+  // 화면이 넓어서 원래도 들어가면 축소하지 않는다(자연스러운 원본 크기 그대로).
+  function fitCompletionReportScale() {
+    const container = $("#completionReportContent");
+    const form = container && container.querySelector(".official-form");
+    if (!container || !form) return;
+    const naturalWidth = form.scrollWidth;
+    const naturalHeight = form.scrollHeight;
+    const available = container.clientWidth;
+    if (!naturalWidth || !available || naturalWidth <= available) {
+      form.style.transform = "";
+      form.style.marginBottom = "";
+      return;
+    }
+    const scale = available / naturalWidth;
+    form.style.transform = `scale(${scale})`;
+    // transform은 레이아웃 공간을 그대로 차지하므로, 줄어든 만큼을 음수 마진으로 걷어내
+    // 페이지 아래(이전/다음 버튼 등)에 빈 여백이 남지 않게 한다.
+    form.style.marginBottom = `${Math.round(naturalHeight * scale - naturalHeight)}px`;
+  }
+  window.addEventListener("resize", () => {
+    if ($("#screen-completion-report").classList.contains("active")) fitCompletionReportScale();
+  });
 
   function showCompletionReportPage(idx) {
     if (!completionReportPages.length) return;
@@ -1952,6 +2006,7 @@
     $("#btnCompletionPrevPage").disabled = completionReportPageIndex === 0;
     $("#btnCompletionNextPage").disabled = completionReportPageIndex === total - 1;
     $("#completionReportPager").classList.toggle("hidden", total <= 1);
+    fitCompletionReportScale();
   }
 
   $("#btnCompletionPrevPage").addEventListener("click", () => showCompletionReportPage(completionReportPageIndex - 1));
@@ -2039,7 +2094,11 @@
     const el = $("#completionReportContent");
     // 화면에서는 한 번에 한 페이지만 보이지만(.report-page.active), PDF에는 전체 페이지가
     // 다 들어가야 하므로 캡처 직전에만 전부 보이게 전환한다 - html2canvas는 @media print를
-    // 반영하지 않으므로 인쇄용 CSS만으로는 부족하다.
+    // 반영하지 않으므로 인쇄용 CSS만으로는 부족하다. 좁은 화면에서 스크롤 없이 보이도록
+    // fitCompletionReportScale이 걸어둔 축소(transform)도 마찬가지로 @media print를 안 타서,
+    // 캡처 직전에 걷어내지 않으면 PDF까지 작게 찍힌다 - 캡처 후 화면용 축소를 다시 계산해 돌려놓는다.
+    const form = el.querySelector(".official-form");
+    if (form) { form.style.transform = ""; form.style.marginBottom = ""; }
     el.classList.add("pdf-export-all-pages");
     try {
       return await html2pdf()
@@ -2055,6 +2114,7 @@
         .outputPdf("blob");
     } finally {
       el.classList.remove("pdf-export-all-pages");
+      fitCompletionReportScale();
     }
   }
 
