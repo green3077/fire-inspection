@@ -138,6 +138,37 @@
     return matches && matches.length > 1 ? matches.join(", ") : raw;
   }
 
+  // 탐색기/다른 폴더에서 파일을 끌어다 놓아도 기존 파일 선택(input[type=file]) 방식과 똑같이
+  // 동작하도록 하는 공통 헬퍼 - dragover 중엔 el에 "drag-over" 클래스로 시각적 표시를 주고,
+  // 놓인 파일 중 첫 번째만 onFile로 넘긴다(기존 파일 입력도 한 번에 한 개만 다뤘으므로 동일하게 맞춤).
+  // dragenter/dragleave는 자식 요소를 넘나들 때마다도 반복 발생하므로 depth 카운터로 묶어서
+  // 전체 영역을 벗어날 때만 표시를 지운다.
+  function setupFileDropZone(el, onFile) {
+    if (!el) return;
+    let dragDepth = 0;
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    });
+    el.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      dragDepth++;
+      el.classList.add("drag-over");
+    });
+    el.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) el.classList.remove("drag-over");
+    });
+    el.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      el.classList.remove("drag-over");
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) onFile(file);
+    });
+  }
+
   function revokeObjectUrls() {
     activeObjectUrls.forEach((u) => URL.revokeObjectURL(u));
     activeObjectUrls = [];
@@ -821,9 +852,9 @@
   $("#btnEntryManual").addEventListener("click", openBlankSiteForm);
   $("#btnEntryImport").addEventListener("click", () => $("#clientImportInput").click());
 
-  $("#clientImportInput").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
+  // 파일 입력 change 이벤트와 드래그앤드롭(handleClientImportDrop) 양쪽에서 재사용하도록 File
+  // 객체를 직접 받는 함수로 분리했다.
+  async function handleClientImportFile(file) {
     if (!file) return;
     ImportLoading.show(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다." : "자료를 분석하고 있습니다.");
     ImportLoading.startSimulated();
@@ -901,7 +932,15 @@
       await driveBackupPromise;
       ImportLoading.hide();
     }
+  }
+  $("#clientImportInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    handleClientImportFile(file);
   });
+  // 탐색기/다른 폴더에서 파일을 끌어다 놓아도 "자료 불러오기" 버튼을 누른 것과 똑같이 동작하도록
+  // 현장 등록 방식 선택 화면 전체를 드롭 영역으로 둔다.
+  setupFileDropZone($("#screen-site-entry-choice"), handleClientImportFile);
 
   $("#btnCancelSiteForm").addEventListener("click", () => {
     if (editingSiteId) openSiteDetail(editingSiteId); else { renderSites(); showScreen("screen-sites"); }
@@ -1555,20 +1594,54 @@
     }
     list.innerHTML = sites.map((s) => {
       const c = countsBySite.get(s.id) || { open: 0, resolved: 0 };
+      // 지적사항이 하나도 없는 현장은 "확인해봤는데 정말 없음"(deficiencyReviewed로 명시적으로
+      // 표시함)과 "신규 등록이라 아직 확인 전"을 구분한다 - 둘 다 그냥 "지적사항 없음"이라고
+      // 하면 아직 검토 안 한 신규 거래처도 이미 확인 끝난 것처럼 보여서 놓치기 쉽다.
+      const noneBadge = s.deficiencyReviewed
+        ? `<span class="badge badge-scheduled">지적사항 없음</span>`
+        : `<span class="badge badge-pending">검토중</span>`;
       const badges = [
         c.open > 0 ? `<span class="badge badge-open">미해결 ${c.open}</span>` : "",
         c.resolved > 0 ? `<span class="badge badge-resolved">해결 ${c.resolved}</span>` : "",
-        (c.open === 0 && c.resolved === 0) ? `<span class="badge badge-scheduled">지적사항 없음</span>` : ""
+        (c.open === 0 && c.resolved === 0) ? noneBadge : ""
       ].join(" ");
       return `
         <div class="list-card" data-site="${s.id}">
-          <div class="list-card-title"><span>${escapeHtml(s.name)}</span><span>${badges}</span></div>
+          <div class="list-card-title">
+            <span class="list-card-title-main"><span>${escapeHtml(s.name)}</span> ${badges}</span>
+            <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+          </div>
+          <div class="site-card-menu hidden" data-menu>
+            <button type="button" data-menu-edit>수정</button>
+            <button type="button" class="danger" data-menu-delete>삭제</button>
+          </div>
           <div class="list-card-sub">${escapeHtml(s.address || "")}</div>
         </div>
       `;
     }).join("");
     $$("#deficiencyHubList .list-card").forEach((el) => {
-      el.addEventListener("click", () => openSiteDeficiencies(el.dataset.site));
+      const id = el.dataset.site;
+      el.addEventListener("click", () => openSiteDeficiencies(id));
+      const menuBtn = el.querySelector("[data-menu-btn]");
+      const menu = el.querySelector("[data-menu]");
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const wasOpen = menu === openSiteCardMenu;
+        closeSiteCardMenu();
+        if (!wasOpen) { menu.classList.remove("hidden"); openSiteCardMenu = menu; }
+      });
+      menu.addEventListener("click", (e) => e.stopPropagation());
+      menu.querySelector("[data-menu-edit]").addEventListener("click", () => {
+        closeSiteCardMenu();
+        openSiteEditForm(id);
+      });
+      menu.querySelector("[data-menu-delete]").addEventListener("click", async () => {
+        closeSiteCardMenu();
+        const ok = await confirmDialog("거래처를 삭제 하시겠습니까?");
+        if (!ok) return;
+        await FireDB.deleteSite(id);
+        renderDeficiencyHub();
+      });
     });
   }
 
@@ -1590,7 +1663,12 @@
       <h2>${escapeHtml(site ? site.name : "")} · 지적사항 관리</h2>
       <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site && site.address ? site.address : "-")}</span></div>
       <div class="report-meta-row"><span class="label">미해결 / 해결</span><span>${open}건 / ${resolved}건</span></div>
+      ${currentDeficiencies.length === 0
+        ? `<div class="report-meta-row"><span class="label">상태</span><span>${site && site.deficiencyReviewed ? "지적사항 없음 (확인됨)" : "검토중 (아직 확인 전)"}</span></div>`
+        : ""}
     `;
+    // "지적사항 없음" 버튼은 지적사항이 하나도 없을 때만 의미가 있다(이미 등록된 게 있으면 모순).
+    $("#btnMarkNoDeficiency").classList.toggle("hidden", currentDeficiencies.length > 0);
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
@@ -1773,11 +1851,18 @@
     }
   });
 
+  $("#btnMarkNoDeficiency").addEventListener("click", async () => {
+    const ok = await confirmDialog("이 현장은 지적사항이 없는 것으로 표시할까요?");
+    if (!ok) return;
+    await FireDB.updateSite(currentDeficiencySiteId, { deficiencyReviewed: true });
+    toast("지적사항 없음으로 표시했습니다.");
+    await renderDeficiencies();
+  });
+
   $("#btnImportData").addEventListener("click", () => $("#dataImportInput").click());
 
-  $("#dataImportInput").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
+  // 파일 입력 change 이벤트와 드래그앤드롭 양쪽에서 재사용하도록 File 객체를 직접 받는 함수로 분리.
+  async function handleDeficiencyImportFile(file) {
     if (!file) return;
     const driveBackupPromise = backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
     const ext = file.name.split(".").pop().toLowerCase();
@@ -1830,7 +1915,14 @@
       await driveBackupPromise;
       ImportLoading.hide();
     }
+  }
+  $("#dataImportInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    handleDeficiencyImportFile(file);
   });
+  // 탐색기/다른 폴더에서 파일을 끌어다 놓아도 "지적사항 자료 올리기" 버튼을 누른 것과 똑같이 동작.
+  setupFileDropZone($("#screen-deficiencies"), handleDeficiencyImportFile);
 
   // ---------- 이행완료 보고서 ----------
   $("#btnGenerateCompletionReport").addEventListener("click", async () => {
@@ -2360,7 +2452,46 @@
     $("#changeHistoryEnabledToggle").checked = isChangeHistoryVisible();
     renderDriveStatus();
     $("#authCurrentUser").textContent = Auth.getDisplayName();
+    renderCommandLog();
   }
+
+  // ---------- 명령어 기록 (Claude Code로 이 앱을 수정할 때 입력한 명령을 시간순으로 기록) ----------
+  // 앱 코드가 자동으로 수집하는 게 아니라(이 화면과 지금 개발 세션 사이엔 연결이 없음), Claude Code가
+  // 작업할 때마다 command-log.json에 항목을 직접 추가하고 배포하는 방식이다. version.json/update
+  // 체크와 같은 패턴으로 GitHub Pages의 절대 URL에서 항상 최신 내용을 불러온다.
+  const COMMAND_LOG_URL = "https://green3077.github.io/sobang1004/command-log.json";
+
+  function formatCommandLogTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  async function renderCommandLog() {
+    const listEl = $("#commandLogList");
+    if (!listEl) return;
+    listEl.textContent = "불러오는 중...";
+    try {
+      const res = await fetch(COMMAND_LOG_URL + "?t=" + Date.now());
+      if (!res.ok) throw new Error("fetch_failed_" + res.status);
+      const entries = await res.json();
+      if (!Array.isArray(entries) || entries.length === 0) {
+        listEl.textContent = "기록된 명령이 없습니다.";
+        return;
+      }
+      const sorted = [...entries].sort((a, b) => new Date(b.at) - new Date(a.at));
+      listEl.innerHTML = sorted.map((e) => `
+        <div class="command-log-item">
+          <div class="command-log-time">${escapeHtml(formatCommandLogTime(e.at))}</div>
+          <div class="command-log-text">${escapeHtml(e.text || "")}</div>
+        </div>
+      `).join("");
+    } catch (err) {
+      listEl.textContent = "명령어 기록을 불러오지 못했습니다.";
+    }
+  }
+  $("#btnRefreshCommandLog").addEventListener("click", renderCommandLog);
 
   // ---------- 앱 버전 / 업데이트 확인 ----------
   // 사이드로드 앱(스토어 밖에서 apk로 설치)은 스스로를 조용히 덮어쓸 수 없으므로(설치는 항상 사용자

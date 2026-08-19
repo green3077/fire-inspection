@@ -343,6 +343,7 @@
       <button class="btn btn-primary" id="btnAddDeficiency">+ 직접 추가</button>
       <button class="btn btn-secondary" id="btnImportData">📎 지적사항 자료 올리기</button>
     </div>
+    <button class="btn btn-secondary" id="btnMarkNoDeficiency">지적사항 없음</button>
     <div id="deficienciesList"></div>
     <button class="btn btn-primary btn-large" id="btnGenerateCompletionReport">이행완료 보고서 생성</button>
     <button class="btn btn-secondary" id="btnBackFromDeficiencies">← 뒤로</button>
@@ -475,6 +476,12 @@
       <button class="btn btn-secondary" id="btnDataBackup" type="button">지금 백업하기</button>
       <button class="btn btn-secondary" id="btnDataRestore" type="button">최근 백업으로 복구</button>
       <p id="backupStatus" class="status-text"></p>
+    </div>
+    <div class="card">
+      <h2>🕒 명령어 기록</h2>
+      <div class="hint-text">이 앱을 Claude Code로 수정할 때 사용자가 입력한 명령을 날짜/시간까지 기록해 보여줍니다. Claude Code가 작업할 때마다 직접 기록을 남기는 방식이라(자동 수집 아님), 이 기능이 생긴 시점 이후 명령부터 쌓입니다.</div>
+      <button class="btn btn-secondary" id="btnRefreshCommandLog" type="button">새로고침</button>
+      <div id="commandLogList" class="command-log-list"></div>
     </div>
     <div class="card" id="authSettingsCard">
       <h2>🔒 로그인 계정</h2>
