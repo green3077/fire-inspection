@@ -752,6 +752,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .modal-actions { display: flex; gap: 10px; }
 .modal-actions .btn { margin-top: 0; }
 .modal-actions-col { flex-direction: column; }
+.file-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 28px 16px;
+  text-align: center;
+  margin-bottom: 18px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.file-drop-zone.drag-over { border-color: var(--accent); background: rgba(30, 39, 51, 0.04); }
+.file-drop-zone-text { color: var(--text-dim); font-size: 14.5px; margin-bottom: 12px; }
 
 /* 외부 접속 로그인 게이트 */
 .login-gate {

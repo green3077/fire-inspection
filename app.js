@@ -1862,7 +1862,16 @@
     await renderDeficiencies();
   });
 
-  $("#btnImportData").addEventListener("click", () => $("#dataImportInput").click());
+  // "지적사항 자료 올리기"를 누르면 바로 OS 파일 선택창을 여는 대신, 파일 선택 버튼과 드롭 영역을
+  // 함께 보여주는 작은 창을 띄운다 - 화면 아무데나 끌어다 놓아도 되는 건(setupFileDropZone) 알기
+  // 어려우므로, 버튼을 눌렀을 때 "여기로 끌어다 놓거나 선택하세요"를 눈에 보이게 안내하기 위함.
+  $("#btnImportData").addEventListener("click", () => $("#fileUploadModal").classList.remove("hidden"));
+  $("#fileUploadCancelBtn").addEventListener("click", () => $("#fileUploadModal").classList.add("hidden"));
+  $("#fileUploadBrowseBtn").addEventListener("click", () => $("#dataImportInput").click());
+  setupFileDropZone($("#fileUploadDropZone"), (file) => {
+    $("#fileUploadModal").classList.add("hidden");
+    handleDeficiencyImportFile(file);
+  });
 
   // 파일 입력 change 이벤트와 드래그앤드롭 양쪽에서 재사용하도록 File 객체를 직접 받는 함수로 분리.
   async function handleDeficiencyImportFile(file) {
@@ -1922,6 +1931,7 @@
   $("#dataImportInput").addEventListener("change", (e) => {
     const file = e.target.files[0];
     e.target.value = "";
+    $("#fileUploadModal").classList.add("hidden");
     handleDeficiencyImportFile(file);
   });
   // 탐색기/다른 폴더에서 파일을 끌어다 놓아도 "지적사항 자료 올리기" 버튼을 누른 것과 똑같이 동작.
