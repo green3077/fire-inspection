@@ -306,15 +306,20 @@ const HwpxExport = (() => {
       return;
     }
 
-    // 원본 비율(width/height)을 그대로 유지한 채 "폭"에 맞춰서만 채운다(자르지 않음) - 표의 칸 폭은
-    // 전체 열에 고정된 값이라 반드시 지켜야 하지만, 칸 높이는 한글이 실제 내용(그림 크기)에 맞춰
-    // 행을 자동으로 늘려주는 값이다(appendValueLineInLabelCell의 cellSz 관련 주석 참고). 예전에는
-    // 폭/높이 둘 다 원래 칸 크기(가로가 긴 landscape 형태, 20308x15293) 안에 들어가도록 축소했는데,
-    // 세로로 찍은(portrait) 현장 사진은 그러면 높이가 먼저 꽉 차서 폭이 칸의 절반 정도로만 줄어들어
-    // "사진이 작게(칸 절반만 차지) 나온다"는 문제가 있었다 - 높이는 어차피 행이 알아서 늘어나므로,
-    // 항상 폭 기준으로만 맞추면 세로 사진도 칸 폭을 꽉 채우고(행만 자동으로 길어짐) 잘리지도 않는다.
+    // 원본 비율(width/height)을 그대로 유지한 채 칸 폭(maxW)과 "한 페이지에 4건이 들어가도록 정한
+    // 행당 높이 예산"(maxH, ROW_MAX_HEIGHT_HWP) 안에 모두 들어가도록 축소한다(자르지 않음, contain-fit).
+    // 예전에는 폭 기준으로만 맞췄는데(높이는 한글이 알아서 행을 늘려준다는 전제) - 세로로 찍은 사진은
+    // 칸 폭을 다 채우면 키가 매우 커져(예: 3024x4032 사진이 약 95mm) 한 페이지에 1~2건밖에 못 담고
+    // 사진도 오히려 너무 커서 가독성이 떨어지는 문제가 있었다. 사용자가 "이행결과가 한 페이지에 4개씩
+    // (전후 사진 총 8장) 오도록" 요청 - ROW_MAX_HEIGHT_HWP는 A4 페이지 실사용 높이(84188-상단여백5668
+    // -하단여백2834=75686)에서 반복 헤더 3줄 높이(10589, 템플릿 샘플 파일 cellSz 기준)를 뺀 뒤 4로
+    // 나눈 값(16274)에서 셀 여백/줄간격 여유를 뺀 값 - HwpFrame.HwpObject COM 자동화로 실제 한글에
+    // 4건/8건짜리 보고서를 렌더링(PDF 저장 후 페이지 수 확인)해서 정확히 4건이 1페이지에 들어가는
+    // 것까지 확인했다.
+    const ROW_MAX_HEIGHT_HWP = 14800;
     const maxW = cellWidthHwp - 200;
-    const scale = maxW / width;
+    const maxH = ROW_MAX_HEIGHT_HWP;
+    const scale = Math.min(maxW / width, maxH / height);
     const hwpWidth = Math.max(1000, Math.round(width * scale));
     const hwpHeight = Math.max(1000, Math.round(height * scale));
 
