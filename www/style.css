@@ -419,6 +419,10 @@ input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 }
 .list-card-title { font-weight: 800; font-size: 17.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .list-card-title-main { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+/* 배지(검토중/미해결/해결/지적사항 없음)를 점3개 메뉴 버튼 바로 왼쪽에 붙여서 상태와 메뉴가
+   한눈에 같이 보이도록 한다 (지적사항 메뉴 카드 전용). */
+.list-card-title-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.list-card-badges { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .list-card-sub { font-size: 14.5px; color: var(--text-dim); margin-top: 5px; }
 .list-card-static { cursor: default; }
 

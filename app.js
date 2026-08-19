@@ -1608,8 +1608,11 @@
       return `
         <div class="list-card" data-site="${s.id}">
           <div class="list-card-title">
-            <span class="list-card-title-main"><span>${escapeHtml(s.name)}</span> ${badges}</span>
-            <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+            <span class="list-card-title-main">${escapeHtml(s.name)}</span>
+            <span class="list-card-title-right">
+              <span class="list-card-badges">${badges}</span>
+              <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+            </span>
           </div>
           <div class="site-card-menu hidden" data-menu>
             <button type="button" data-menu-edit>수정</button>
