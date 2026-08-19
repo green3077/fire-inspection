@@ -94,11 +94,11 @@
     }
   }
 
-  // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있으면
-  // 아무 일도 하지 않고, 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는 fire-and-forget 함수.
-  // 반환하는 프로미스는 uploadToSite의 결과를 그대로 넘긴다(꺼져있거나 실패하면 null) - 대부분의
-  // 호출부는 결과를 무시해도 되지만(그래서 fire-and-forget), 실패를 사용자에게 알려야 하는 곳
-  // (예: 지적사항 사진)은 이 반환값으로 켜져 있는데도 실패한 경우만 구분해 알릴 수 있다.
+  // 업로드/생성되는 파일을 구글 드라이브(사장님 계정, 중앙 백업 프록시)에 저장 - 꺼져 있거나
+  // 실패해도 절대 호출부의 저장/UI 흐름을 막지 않는다(항상 조용히 무시, throw하지 않음).
+  // 반환하는 프로미스는 uploadToSite의 결과를 그대로 넘기므로(꺼져있거나 실패하면 null),
+  // 완료를 기다리고 싶은 호출부(await backupToDrive(...))나 실패를 사용자에게 알려야 하는 곳
+  // (예: 지적사항 사진)에서 쓸 수 있고, 정말 기다릴 필요 없는 곳은 그냥 호출만 하고 무시해도 안전하다.
   function backupToDrive(siteId, category, filename, blob) {
     if (!blob) return Promise.resolve(null);
     return (siteId ? FireDB.getSite(siteId) : Promise.resolve(null))
@@ -767,15 +767,23 @@
     e.target.value = "";
     if (files.length === 0) return;
     if (editingSiteId) {
-      for (const file of files) {
-        await FireDB.addAttachment({
-          siteId: editingSiteId,
-          filename: file.name,
-          size: file.size,
-          blob: file,
-          createdAt: new Date().toISOString()
-        });
-        backupToDrive(editingSiteId, "첨부파일", file.name, file);
+      ImportLoading.show("자료를 저장하고 있습니다.");
+      try {
+        let idx = 0;
+        for (const file of files) {
+          idx++;
+          ImportLoading.setProgress((idx / files.length) * 100, files.length > 1 ? `자료를 저장하고 있습니다. (${idx}/${files.length})` : "자료를 저장하고 있습니다.");
+          await FireDB.addAttachment({
+            siteId: editingSiteId,
+            filename: file.name,
+            size: file.size,
+            blob: file,
+            createdAt: new Date().toISOString()
+          });
+          await backupToDrive(editingSiteId, "첨부파일", file.name, file);
+        }
+      } finally {
+        ImportLoading.hide();
       }
     } else {
       for (const file of files) {
@@ -797,11 +805,23 @@
     if (!file) return;
     ImportLoading.show(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다." : "자료를 분석하고 있습니다.");
     ImportLoading.startSimulated();
+    // 분석하는 동안 백그라운드로 같이 진행시키고, 함수를 빠져나가기 직전(finally)에 끝났는지 확인한다 -
+    // 화면 전환 전에 실제로 완료됐다는 보장 없이 그냥 던져두면(fire-and-forget) 조용히 끊길 수 있다.
+    let driveBackupPromise = Promise.resolve(null);
     try {
       let result = null;
       if (AiFill.isEnabled()) {
         try {
-          const aiResult = await AiFill.analyzeClientFile(file);
+          // 구 HWP는 AiFill이 직접 다루지 못하므로(isSupportedExt에 없음), 여기서 먼저 hwpx로
+          // 변환해서 넘겨준다 - 그래야 스프링클러설비 체크 여부(AI 분석 전용 필드, 종합점검대상
+          // 자동판단에 쓰임)도 hwp 파일에서 인식된다. 변환 실패 시 원본 그대로 넘기면 AiFill이
+          // unsupported 처리하고 기존 정규식 폴백으로 자연스럽게 이어진다.
+          let aiFile = file;
+          if (file.name.split(".").pop().toLowerCase() === "hwp") {
+            const convertedHwpx = await ClientImport.convertHwpToHwpxViaService(file);
+            if (convertedHwpx) aiFile = new File([convertedHwpx], file.name.replace(/\.hwp$/i, ".hwpx"));
+          }
+          const aiResult = await AiFill.analyzeClientFile(aiFile);
           if (!aiResult.unsupported) result = aiResult;
         } catch (aiErr) {
           result = null; // AI 분석 실패 시 기존 방식으로 폴백
@@ -814,7 +834,7 @@
       }
       {
         const guessName = (result.fields && result.fields.name) || file.name.replace(/\.[^.]+$/, "");
-        DriveBackup.uploadToSite(guessName, "거래처_등록자료", file.name, file).catch(() => {});
+        driveBackupPromise = DriveBackup.uploadToSite(guessName, "거래처_등록자료", file.name, file).catch(() => null);
       }
       if (result.unsupported) {
         toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf, .hwp, .hwpx, 사진).`, "error");
@@ -856,6 +876,7 @@
       toast("파일을 분석하는 중 오류가 발생했습니다. 직접 입력해주세요.", "error");
       openBlankSiteForm();
     } finally {
+      await driveBackupPromise;
       ImportLoading.hide();
     }
   });
@@ -931,7 +952,7 @@
         blob: att.blob,
         createdAt: new Date().toISOString()
       });
-      DriveBackup.uploadToSite(siteName, "첨부파일", att.filename, att.blob).catch(() => {});
+      await DriveBackup.uploadToSite(siteName, "첨부파일", att.filename, att.blob).catch(() => null);
     }
     pendingAttachments = [];
   }
@@ -1305,14 +1326,22 @@
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (files.length === 0) return;
-    for (const file of files) {
-      const photo = await FireDB.addPhoto({
-        siteId: currentSiteId,
-        itemId: SITE_GALLERY_ITEM_ID,
-        blob: file,
-        createdAt: new Date().toISOString()
-      });
-      backupToDrive(currentSiteId, "현장점검_사진", `${photo.id}.jpg`, file);
+    ImportLoading.show("사진을 저장하고 있습니다.");
+    try {
+      let idx = 0;
+      for (const file of files) {
+        idx++;
+        ImportLoading.setProgress((idx / files.length) * 100, files.length > 1 ? `사진을 저장하고 있습니다. (${idx}/${files.length})` : "사진을 저장하고 있습니다.");
+        const photo = await FireDB.addPhoto({
+          siteId: currentSiteId,
+          itemId: SITE_GALLERY_ITEM_ID,
+          blob: file,
+          createdAt: new Date().toISOString()
+        });
+        await backupToDrive(currentSiteId, "현장점검_사진", `${photo.id}.jpg`, file);
+      }
+    } finally {
+      ImportLoading.hide();
     }
     await loadGalleryPhotos();
     toast(`${files.length}장의 사진을 추가했습니다.`, "success");
@@ -1633,32 +1662,42 @@
     if (!files || files.length === 0) return;
     const def = findDeficiency(defId);
     const targetArr = role === "before" ? def.beforePhotoIds : def.afterPhotoIds;
-    for (const file of files) {
-      // 파일 선택창의 accept="image/*"는 SVG(아이콘/그림 파일)도 걸러내지 못한다 - 벡터 이미지는
-      // 절대 실제 현장 사진이 아니므로, 여기서 거르지 않으면 보고서에 그대로(비정상적으로 확대되어)
-      // 들어가버린다(실제 사용자가 겪은 문제).
-      if (file.type === "image/svg+xml") {
-        toast("아이콘/그림 파일(SVG)은 사진으로 등록할 수 없습니다. 실제 사진 파일을 선택해주세요.", "error");
-        continue;
-      }
-      const photo = await FireDB.addPhoto({
-        siteId: currentDeficiencySiteId,
-        itemId: def.id,
-        role,
-        blob: file,
-        createdAt: new Date().toISOString()
-      });
-      targetArr.push(photo.id);
-      // 이 사진은 나중에 다른 기기(PC 등)에서 이행완료보고서를 만들 때 로컬에 원본이 없으면
-      // 구글 드라이브 백업본으로 대신 채워진다(위 openCompletionReport 참고) - 그래서 백업이
-      // 꺼져 있지 않은데도 실패하면(네트워크/서버 문제 등) 조용히 넘기지 않고 바로 알려준다.
-      // 사진은 이미 이 기기 로컬에 저장됐으므로, 알림은 계속 작업을 막지 않는다.
-      backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file)
-        .then((result) => {
-          if (!result && DriveBackup.isEnabled()) {
-            toast("사진은 저장됐지만 구글 드라이브 자동 백업에는 실패했습니다(네트워크 확인).", "error");
-          }
+    // 사진 저장을 시작만 해두고 기다리지 않으면(fire-and-forget), 사용자가 곧바로 다음 사진을
+    // 고르거나 화면을 나가버릴 때 업로드가 끝나기 전에 끊겨 조용히 사라지는 문제가 실제로 있었다
+    // (드라이브에 지적사항 사진이 단 한 장도 올라간 적이 없었음, 백엔드 자체는 정상 확인됨) -
+    // 백업이 실제로 끝날 때까지 기다린 뒤에야 다음 사진으로 넘어가도록 고쳤다. backupToDrive는
+    // 실패해도 절대 throw하지 않으므로(항상 조용히 무시) 여기서 기다려도 로컬 저장 흐름은 안전하다.
+    // 이 사진은 나중에 다른 기기(PC 등)에서 이행완료보고서를 만들 때 로컬에 원본이 없으면 구글
+    // 드라이브 백업본으로 대신 채워진다(위 openCompletionReport 참고) - 그래서 백업이 꺼져 있지
+    // 않은데도 실패하면(네트워크/서버 문제 등) 조용히 넘기지 않고 바로 알려준다.
+    ImportLoading.show("사진을 저장하고 있습니다.");
+    try {
+      let idx = 0;
+      for (const file of files) {
+        idx++;
+        ImportLoading.setProgress((idx / files.length) * 100, files.length > 1 ? `사진을 저장하고 있습니다. (${idx}/${files.length})` : "사진을 저장하고 있습니다.");
+        // 파일 선택창의 accept="image/*"는 SVG(아이콘/그림 파일)도 걸러내지 못한다 - 벡터 이미지는
+        // 절대 실제 현장 사진이 아니므로, 여기서 거르지 않으면 보고서에 그대로(비정상적으로 확대되어)
+        // 들어가버린다(실제 사용자가 겪은 문제).
+        if (file.type === "image/svg+xml") {
+          toast("아이콘/그림 파일(SVG)은 사진으로 등록할 수 없습니다. 실제 사진 파일을 선택해주세요.", "error");
+          continue;
+        }
+        const photo = await FireDB.addPhoto({
+          siteId: currentDeficiencySiteId,
+          itemId: def.id,
+          role,
+          blob: file,
+          createdAt: new Date().toISOString()
         });
+        targetArr.push(photo.id);
+        const result = await backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file);
+        if (!result && DriveBackup.isEnabled()) {
+          toast("사진은 저장됐지만 구글 드라이브 자동 백업에는 실패했습니다(네트워크 확인).", "error");
+        }
+      }
+    } finally {
+      ImportLoading.hide();
     }
     const changes = { beforePhotoIds: def.beforePhotoIds, afterPhotoIds: def.afterPhotoIds };
     // 이행후 사진이 곧 수리 완료의 증거이므로, 한 장이라도 올라오면 이행완료를 자동으로 체크해준다.
@@ -1711,7 +1750,7 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
-    backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
+    const driveBackupPromise = backupToDrive(currentDeficiencySiteId, "지적사항_자료", file.name, file);
     const ext = file.name.split(".").pop().toLowerCase();
     ImportLoading.show(AiFill.isEnabled() ? "AI가 자료를 분석하고 있습니다." : "자료를 분석하고 있습니다.");
     ImportLoading.startSimulated();
@@ -1759,6 +1798,7 @@
     } catch (err) {
       toast("파일을 읽는 중 오류가 발생했습니다.", "error");
     } finally {
+      await driveBackupPromise;
       ImportLoading.hide();
     }
   });
@@ -2020,7 +2060,7 @@
     btn.textContent = "생성 중...";
     try {
       const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
-      backupToDrive(
+      await backupToDrive(
         lastCompletionReportData.site ? lastCompletionReportData.site.id : null,
         "이행완료보고서",
         `이행완료보고서_${lastCompletionReportData.siteName}_${todayISO()}.hwpx`,
@@ -2159,23 +2199,27 @@
     const originalLabel = btn.textContent;
     btn.disabled = true;
     btn.textContent = "생성 중...";
+    // 공유 시트가 뜨는 걸 드라이브 백업 완료까지 기다리게 하고 싶진 않지만, 공유 시트를 연 뒤
+    // 함수가 바로 끝나버리면(백업이 아직 진행 중이어도) 조용히 끊길 위험이 있으므로 finally에서 기다린다.
+    let driveBackupPromise = Promise.resolve(null);
     try {
       const filenameBase = `이행완료보고서_${lastCompletionReportData.siteName}`;
       const siteId = lastCompletionReportData.site ? lastCompletionReportData.site.id : null;
       if (format === "hwpx") {
         const blob = await HwpxExport.generateCompletionReportHwpx(lastCompletionReportData);
-        backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.hwpx`, blob);
+        driveBackupPromise = backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.hwpx`, blob);
         btn.textContent = "공유 화면 여는 중...";
         await shareOrDownloadFile(blob, `${filenameBase}.hwpx`, "application/hwp+zip");
       } else {
         const blob = await generateCompletionReportPdfBlob();
-        backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.pdf`, blob);
+        driveBackupPromise = backupToDrive(siteId, "이행완료보고서", `${filenameBase}_${todayISO()}.pdf`, blob);
         btn.textContent = "공유 화면 여는 중...";
         await shareOrDownloadFile(blob, `${filenameBase}.pdf`, "application/pdf");
       }
     } catch (err) {
       toast("파일 생성에 실패했습니다: " + err.message, "error");
     } finally {
+      await driveBackupPromise;
       btn.disabled = false;
       btn.textContent = originalLabel;
     }

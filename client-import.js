@@ -581,5 +581,5 @@ const ClientImport = (() => {
     return { fields, typeLabel, lowConfidence, failed };
   }
 
-  return { parseClientFile, extractFields };
+  return { parseClientFile, extractFields, convertHwpToHwpxViaService };
 })();
