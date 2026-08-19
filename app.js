@@ -128,6 +128,16 @@
     return raw || "";
   }
 
+  // 점검번호는 "숫자-알파벳-세자리숫자"(예: "1-A-001") 형식 - 지적사항 하나가 점검표 항목 2개에 걸쳐있으면
+  // 원본 표/AI 인식 과정에서 구분자 없이 그대로 붙어(예: "1-A-0012-B-002") 들어오는 경우가 있어, 그 안에서
+  // 이 형식에 맞는 코드를 모두 찾아 쉼표로 이어붙인다. 코드가 하나뿐이거나 이 형식이 전혀 안 보이면
+  // (예: 문서마다 다른 자체 번호 체계) 원본을 그대로 둔다 - 잘못 잘라내지 않기 위함.
+  function normalizeInspectionCode(raw) {
+    if (!raw) return raw || "";
+    const matches = raw.match(/\d-[A-Za-z]-\d{3}/g);
+    return matches && matches.length > 1 ? matches.join(", ") : raw;
+  }
+
   function revokeObjectUrls() {
     activeObjectUrls.forEach((u) => URL.revokeObjectURL(u));
     activeObjectUrls = [];
@@ -1465,7 +1475,7 @@
       category: fields.category || "",
       floor: fields.floor || "",
       location: fields.location || "",
-      code: fields.code || "",
+      code: normalizeInspectionCode(fields.code || ""),
       description: fields.description || "",
       beforePhotoIds: [],
       afterPhotoIds: [],
@@ -1631,7 +1641,11 @@
     `).join("");
 
     $$("#deficienciesList .def-field").forEach((el) => {
-      el.addEventListener("change", () => setDeficiencyField(el.dataset.def, el.dataset.field, el.value));
+      el.addEventListener("change", async () => {
+        await setDeficiencyField(el.dataset.def, el.dataset.field, el.value);
+        // 점검번호는 정규화(쉼표 삽입)된 값을 입력칸에도 바로 반영해 사용자가 결과를 즉시 확인할 수 있게 한다.
+        if (el.dataset.field === "code") el.value = findDeficiency(el.dataset.def).code;
+      });
     });
     $$("#deficienciesList .def-resolved").forEach((el) => {
       el.addEventListener("change", () => setDeficiencyResolved(el.dataset.def, el.checked));
@@ -1649,6 +1663,7 @@
 
   async function setDeficiencyField(defId, field, value) {
     const def = findDeficiency(defId);
+    if (field === "code") value = normalizeInspectionCode(value);
     def[field] = value;
     await FireDB.updateDeficiency(def.id, { [field]: value });
   }
