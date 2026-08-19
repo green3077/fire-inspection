@@ -437,7 +437,14 @@
     const last = lastBySite.get(s.id);
     return `
       <div class="list-card" data-id="${s.id}">
-        <div class="list-card-title"><span>${escapeHtml(s.name)}</span>${inspectionScheduleBadgeHtml(s)}</div>
+        <div class="list-card-title">
+          <span class="list-card-title-main"><span>${escapeHtml(s.name)}</span>${inspectionScheduleBadgeHtml(s)}</span>
+          <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+        </div>
+        <div class="site-card-menu hidden" data-menu>
+          <button type="button" data-menu-edit>수정</button>
+          <button type="button" class="danger" data-menu-delete>삭제</button>
+        </div>
         <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}${s.contactName ? " · 담당자: " + escapeHtml(s.contactName) : ""}</div>
         <div class="list-card-sub">${last ? `마지막 점검일: ${escapeHtml(last.completedDate || last.scheduledDate)} · 점검자: ${escapeHtml(last.inspector || "-")}` : "점검 이력 없음"}</div>
         <div class="list-card-sub site-card-phone-row">
@@ -447,11 +454,40 @@
       </div>
     `;
   }
+  // 카드를 다시 그릴 때(정렬/지역 전환 등) 이전에 열려 있던 카드메뉴가 고아 상태로 남지 않도록,
+  // 열려 있는 메뉴는 항상 문서 전역에서 하나만 추적하고 다른 곳을 클릭하면 닫는다.
+  let openSiteCardMenu = null;
+  function closeSiteCardMenu() {
+    if (openSiteCardMenu) openSiteCardMenu.classList.add("hidden");
+    openSiteCardMenu = null;
+  }
+  document.addEventListener("click", closeSiteCardMenu);
   function bindSiteCardClicks(container) {
     Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
-      el.addEventListener("click", () => openSiteDetail(el.dataset.id));
+      const id = el.dataset.id;
+      el.addEventListener("click", () => openSiteDetail(id));
       const callBtn = el.querySelector(".btn-call");
       if (callBtn) callBtn.addEventListener("click", (e) => e.stopPropagation());
+      const menuBtn = el.querySelector("[data-menu-btn]");
+      const menu = el.querySelector("[data-menu]");
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const wasOpen = menu === openSiteCardMenu;
+        closeSiteCardMenu();
+        if (!wasOpen) { menu.classList.remove("hidden"); openSiteCardMenu = menu; }
+      });
+      menu.addEventListener("click", (e) => e.stopPropagation());
+      menu.querySelector("[data-menu-edit]").addEventListener("click", () => {
+        closeSiteCardMenu();
+        openSiteEditForm(id);
+      });
+      menu.querySelector("[data-menu-delete]").addEventListener("click", async () => {
+        closeSiteCardMenu();
+        const ok = await confirmDialog("거래처를 삭제 하시겠습니까?");
+        if (!ok) return;
+        await FireDB.deleteSite(id);
+        renderSites();
+      });
     });
   }
   function renderSiteCardsInto(list, sitesArr, lastBySite, emptyMessage) {
@@ -1089,9 +1125,11 @@
 
   $("#btnBackToSites").addEventListener("click", () => { renderSites(); showScreen("screen-sites"); });
 
-  $("#btnEditSite").addEventListener("click", async () => {
-    const site = await FireDB.getSite(currentSiteId);
-    editingSiteId = currentSiteId;
+  // 현장 상세 화면의 "현장 정보 수정" 버튼과 거래처 목록 카드메뉴의 "수정" 둘 다 여기로 들어온다.
+  async function openSiteEditForm(id) {
+    currentSiteId = id;
+    const site = await FireDB.getSite(id);
+    editingSiteId = id;
     $("#siteFormTitle").textContent = "현장 정보 수정";
     $("#siteName").value = site.name || "";
     $("#siteAddress").value = site.address || "";
@@ -1126,7 +1164,8 @@
     lastAutoBldRegAddress = site.address || "";
     renderSiteAttachments();
     showScreen("screen-site-form");
-  });
+  }
+  $("#btnEditSite").addEventListener("click", () => openSiteEditForm(currentSiteId));
 
   $("#btnDeleteSite").addEventListener("click", async () => {
     const ok = await confirmDialog("이 현장과 관련 점검 기록을 모두 삭제할까요?");
