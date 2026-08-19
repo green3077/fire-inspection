@@ -242,10 +242,18 @@ const HwpxExport = (() => {
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      const outType = blob.type === "image/png" ? "image/png" : "image/jpeg";
+      const ctx = canvas.getContext("2d");
+      // 항상 흰 배경을 먼저 채운다 - 원본이 PNG(스크린샷 등)면 캔버스가 알파 채널을 가진 채
+      // 그려지는데, 실제 PC 한글(Hwp.exe)에서 이렇게 나온 RGBA PNG를 hp:pic으로 삽입하면 깨진
+      // 그림 아이콘만 뜨고 사진이 아예 안 보이는 문제가 있었다(휴대폰/모바일 뷰어는 같은 파일을
+      // 문제없이 보여줘서 오래 못 찾았다 - 실제 Hwp.exe로 직접 열어 재현/확인함). 아래에서 항상
+      // JPEG로만 내보내면(알파 채널 자체가 없는 포맷) 이 문제가 사라진다 - 사진에는 어차피 투명도가
+      // 필요 없으므로 원본이 PNG였어도 흰 배경으로 깔고 JPEG로 인코딩해도 시각적으로 차이가 없다.
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
       const outBlob = await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_encode_failed"))), outType, 0.92);
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_encode_failed"))), "image/jpeg", 0.92);
       });
       return { blob: outBlob, width, height };
     } finally {
@@ -303,8 +311,9 @@ const HwpxExport = (() => {
     const hwpWidth = Math.max(1000, Math.round(width * scale));
     const hwpHeight = Math.max(1000, Math.round(height * scale));
 
-    const ext = normalizedBlob.type === "image/png" ? "png" : "jpg";
-    const mediaType = normalizedBlob.type === "image/png" ? "image/png" : "image/jpeg";
+    // normalizeImagePhoto가 이제 항상 JPEG로 인코딩하므로(PC 한글의 RGBA PNG 렌더링 실패 회피) 고정값.
+    const ext = "jpg";
+    const mediaType = "image/jpeg";
     const imageIndex = ++imageState.count;
     const binaryId = `image${imageIndex}`;
     const buf = await normalizedBlob.arrayBuffer();
