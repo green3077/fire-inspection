@@ -46,9 +46,29 @@ const ClientImport = (() => {
   const EDU_DATE_RE = /최근\s*교육이수일\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/;
   // "2.건축물 정보" 섹션(사용승인일/연면적/층수) - 건축물대장 조회가 실패하거나 아직 조회 전일 때의 대체 출처.
   // 건축물대장 조회가 성공하면 항상 그 값으로 덮어써지므로(최종 기준), 여기서는 보조적으로만 채운다.
-  const REPORT_APPROVAL_DATE_RE = /사용승인일\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/;
-  const REPORT_AREA_RE = /연\s*면\s*적\s*([\d,]+\.?\d*)\s*㎡/;
-  const REPORT_FLOOR_RE = /층수\s*(?:지상\s*(\d+)\s*층)?\s*\/?\s*(?:지하\s*(\d+)\s*층)?/;
+  // 본관/신관처럼 동이 여러 개인 보고서는 "사용승인일\n  본관: 1997년...\n  신관: 2023년..." 처럼
+  // 라벨 라인 하나 아래에 동별 값이 여러 줄 나온다 - 라벨 뒤 일정 구간(window)에서 값 패턴을 모두
+  // 찾아 사용승인일은 가장 이른 날짜, 연면적은 합산, 층수는 각각 최고층을 채택한다(app.js의 건축물대장
+  // 조회 결과 표시와 같은 규칙 - 동마다 다른 값을 범위/나열이 아니라 하나의 대표값으로 정리).
+  const APPROVAL_LABEL_RE = /사용승인일/;
+  const APPROVAL_VALUE_RE = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g;
+  const APPROVAL_WINDOW = 100;
+  const AREA_LABEL_RE = /연\s*면\s*적/;
+  const AREA_VALUE_RE = /([\d,]+\.?\d*)\s*㎡/g;
+  // 라벨 바로 다음 섹션이 "건축면적"(㎡ 단위 그대로 재사용)이라 window를 너무 넉넉히 잡으면 그
+  // 값까지 연면적 합계에 잘못 더해진다 - 동 2~3개 정도까지만 커버하도록 좁게 잡는다.
+  const AREA_WINDOW = 32;
+  const FLOOR_LABEL_RE = /층수/;
+  const GRND_FLOOR_VALUE_RE = /지상\s*(\d+)\s*층/g;
+  const UGRND_FLOOR_VALUE_RE = /지하\s*(\d+)\s*층/g;
+  const FLOOR_WINDOW = 80;
+
+  // labelRe로 라벨을 찾아 그 뒤 window자(전각 숫자 정규화 후)를 잘라 반환. 라벨이 없으면 빈 문자열.
+  function textAfterLabel(fullText, labelRe, window) {
+    const m = labelRe.exec(fullText);
+    if (!m) return "";
+    return normalizeDigits(fullText.slice(m.index + m[0].length, m.index + m[0].length + window));
+  }
 
   function normalizeDate(v) {
     if (!v) return v;
@@ -313,23 +333,54 @@ const ClientImport = (() => {
   // 아직 조회하지 않은 상태에서도 값이 비어있지 않도록 하는 보조 출처(조회가 성공하면 그 값으로 항상 덮어써짐).
   function extractBuildingInfoFromReport(joinedRows, result) {
     const fullText = joinedRows.join("\n");
-    const approvalMatch = fullText.match(REPORT_APPROVAL_DATE_RE);
-    if (approvalMatch && !result.approvalDate) {
-      result.approvalDate = `${approvalMatch[1]}-${approvalMatch[2].padStart(2, "0")}-${approvalMatch[3].padStart(2, "0")}`;
+
+    if (!result.approvalDate) {
+      const seg = textAfterLabel(fullText, APPROVAL_LABEL_RE, APPROVAL_WINDOW);
+      const dates = [];
+      let m;
+      APPROVAL_VALUE_RE.lastIndex = 0;
+      while ((m = APPROVAL_VALUE_RE.exec(seg))) {
+        dates.push(`${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`);
+      }
+      // 동이 여러 개면 가장 오래된(이른) 사용승인일을 대표값으로 쓴다(사용자 요청) - 문자열이 이미
+      // YYYY-MM-DD 형식이라 사전순 정렬이 곧 날짜순 정렬과 같다.
+      if (dates.length) result.approvalDate = dates.sort()[0];
     }
-    const areaMatch = fullText.match(REPORT_AREA_RE);
-    if (areaMatch && !result.area) {
-      result.area = normalizeDigits(areaMatch[1]).replace(/,/g, "");
+
+    if (!result.area) {
+      const seg = textAfterLabel(fullText, AREA_LABEL_RE, AREA_WINDOW);
+      let total = 0, found = false, m;
+      AREA_VALUE_RE.lastIndex = 0;
+      while ((m = AREA_VALUE_RE.exec(seg))) {
+        const n = parseFloat(m[1].replace(/,/g, ""));
+        if (!isNaN(n)) { total += n; found = true; }
+      }
+      // 동이 여러 개면 전체 연면적은 각 동의 합(사용자 요청).
+      if (found) result.area = String(Math.round(total * 100) / 100);
     }
-    const floorMatch = fullText.match(REPORT_FLOOR_RE);
-    if (floorMatch && (floorMatch[1] || floorMatch[2]) && !result.floorInfo) {
-      // 지하는 0층(=지하 없음)이면 "지하 0층"이 아니라 "지하 -"로 표시(app.js의 건축물대장 조회 표시와 동일 규칙).
-      const grnd = floorMatch[1] ? parseInt(normalizeDigits(floorMatch[1]), 10) : null;
-      const ugrnd = floorMatch[2] ? parseInt(normalizeDigits(floorMatch[2]), 10) : null;
-      result.floorInfo = [
-        grnd != null ? `지상 ${grnd}층` : "",
-        ugrnd != null ? (ugrnd === 0 ? "지하 -" : `지하 ${ugrnd}층`) : ""
-      ].filter(Boolean).join(" / ");
+
+    if (!result.floorInfo) {
+      const seg = textAfterLabel(fullText, FLOOR_LABEL_RE, FLOOR_WINDOW);
+      const maxOf = (re) => {
+        re.lastIndex = 0;
+        let max = null, m;
+        while ((m = re.exec(seg))) {
+          const n = parseInt(m[1], 10);
+          if (max === null || n > max) max = n;
+        }
+        return max;
+      };
+      const grnd = maxOf(GRND_FLOOR_VALUE_RE);
+      const ugrnd = maxOf(UGRND_FLOOR_VALUE_RE);
+      // 동이 여러 개면(층수가 서로 다를 수 있음) 그중 가장 높은 층수를 대표값으로 쓴다 - app.js의
+      // 건축물대장 조회 결과 표시(floorText)와 같은 규칙. 지하는 0층(=지하 없음)이면 "지하 0층"이
+      // 아니라 "지하 -"로 표시.
+      if (grnd != null || ugrnd != null) {
+        result.floorInfo = [
+          grnd != null ? `지상 ${grnd}층` : "",
+          ugrnd != null ? (ugrnd === 0 ? "지하 -" : `지하 ${ugrnd}층`) : ""
+        ].filter(Boolean).join(" / ");
+      }
     }
   }
 
