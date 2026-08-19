@@ -7,6 +7,7 @@
 const HwpxExport = (() => {
   const HP = "http://www.hancom.co.kr/hwpml/2011/paragraph";
   const HC = "http://www.hancom.co.kr/hwpml/2011/core";
+  const HH = "http://www.hancom.co.kr/hwpml/2011/head";
   const OPF = "http://www.idpf.org/2007/opf/";
   const TEMPLATE_URL = "templates/completion-report-template.hwpx";
 
@@ -89,6 +90,17 @@ const HwpxExport = (() => {
       }
     }
     return false;
+  }
+
+  // 표지의 "성명:"/"전화번호:"/"소재지" 같은 라벨 한 줄짜리 문단들(paraPr id=49)이 양쪽정렬(JUSTIFY)로
+  // 돼 있어서, 라벨 뒤에 짧은 값만 붙으면 한글이 그 사이 공백을 셀 너비 끝까지 늘려버려 "성명:   홍길동"
+  // 사이가 비정상적으로 크게 벌어져 보였다(실사용자가 겪은 문제 - 소방안전관리자 성명/전화번호란).
+  // 양쪽정렬은 여러 줄짜리 본문에나 어울리지 이런 한 줄짜리 라벨:값 칸에는 안 맞으므로 왼쪽 정렬로
+  // 바꾼다. id=49는 표지 칸 라벨들 전용 스타일이라(본문 문단은 다른 paraPr를 씀) 안전하게 통째로 바꿀 수 있다.
+  function fixLabelLineAlignment(headerDoc) {
+    const paraPr49 = Array.from(headerDoc.getElementsByTagNameNS(HH, "paraPr")).find((p) => p.getAttribute("id") === "49");
+    const align = paraPr49 && paraPr49.getElementsByTagNameNS(HH, "align")[0];
+    if (align) align.setAttribute("horizontal", "LEFT");
   }
 
   function fillCoverPage(doc, data) {
@@ -404,15 +416,18 @@ const HwpxExport = (() => {
 
     const sectionXmlText = await zip.file("Contents/section0.xml").async("text");
     const hpfXmlText = await zip.file("Contents/content.hpf").async("text");
+    const headerXmlText = await zip.file("Contents/header.xml").async("text");
 
     const parser = new DOMParser();
     const sectionDoc = parser.parseFromString(sectionXmlText, "application/xml");
     const hpfDoc = parser.parseFromString(hpfXmlText, "application/xml");
+    const headerDoc = parser.parseFromString(headerXmlText, "application/xml");
 
     if (sectionDoc.getElementsByTagName("parsererror").length > 0) {
       throw new Error("hwpx_template_parse_error");
     }
 
+    fixLabelLineAlignment(headerDoc);
     fillCoverPage(sectionDoc, { site, company, dateRange, contactName, contactPhone, managerName, managerPhone, siteName, siteType, siteAddr, fireStation });
 
     const tbls = Array.from(sectionDoc.getElementsByTagNameNS(HP, "tbl"));
@@ -428,6 +443,7 @@ const HwpxExport = (() => {
     const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>';
     zip.file("Contents/section0.xml", XML_DECL + serializer.serializeToString(sectionDoc.documentElement));
     zip.file("Contents/content.hpf", XML_DECL + serializer.serializeToString(hpfDoc.documentElement));
+    zip.file("Contents/header.xml", XML_DECL + serializer.serializeToString(headerDoc.documentElement));
 
     return zip.generateAsync({ type: "blob", mimeType: "application/hwp+zip" });
   }
