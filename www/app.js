@@ -656,6 +656,20 @@
   $("#btnCompTargetNo").addEventListener("click", () => renderComprehensiveToggle(comprehensiveTarget === false ? null : false));
 
   // 종합점검/작동점검 버튼에 현재 값(직접 지정한 값이 있으면 그 값, 없으면 자동계산 결과)을 표시.
+  // "미정"은 종합점검대상 여부 자체를 아직 안 골랐을 때만 써야 한다 - comprehensiveTarget이 이미
+  // true/false로 정해졌는데 사용승인일을 아직 몰라서(자동 인식 실패, 건축물대장 조회 전/실패 등)
+  // 월을 못 구한 경우까지 똑같이 "미정"이라고 하면, "스프링클러 체크돼서 종합점검대상은 맞게 켜졌는데
+  // 왜 미정으로 나오냐"는 오해를 산다(대상 여부 자체가 안 정해진 것으로 보임) - 실제로는 대상 여부는
+  // 이미 정해졌고 사용승인일만 없는 것이므로 문구로 구분해준다.
+  // isComprehensive: 종합점검 버튼(true)은 comprehensiveTarget===false일 때 원래부터 "해당없음"(날짜와
+  // 무관하게 종합점검 자체가 없음)이지만, 작동점검 버튼(false)은 종합점검대상 여부와 무관하게 항상
+  // 필요하므로 "해당없음"이라고 하면 안 되고 사용승인일이 없어서 못 구했다는 뜻으로 표시해야 한다.
+  function monthPickerLabel(month, isComprehensive) {
+    if (month) return `${month}월`;
+    if (isComprehensive && comprehensiveTarget === false) return "해당없음";
+    if (comprehensiveTarget === true || comprehensiveTarget === false) return "사용승인일 필요";
+    return "미정";
+  }
   function renderMonthPickerButtons() {
     const sched = computeInspectionMonths({
       comprehensiveTarget,
@@ -663,10 +677,8 @@
       comprehensiveMonthOverride: comprehensiveMonthValue,
       operationalMonthOverride: operationalMonthValue
     });
-    const comp = sched && sched.comprehensiveMonth;
-    $("#btnPickComprehensiveMonth").textContent = comp ? `${comp}월` : (comprehensiveTarget === false ? "해당없음" : "미정");
-    const oper = sched && sched.operationalMonth;
-    $("#btnPickOperationalMonth").textContent = oper ? `${oper}월` : "미정";
+    $("#btnPickComprehensiveMonth").textContent = monthPickerLabel(sched && sched.comprehensiveMonth, true);
+    $("#btnPickOperationalMonth").textContent = monthPickerLabel(sched && sched.operationalMonth, false);
   }
   $("#siteApprovalDate").addEventListener("input", renderMonthPickerButtons);
 
