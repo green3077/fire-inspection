@@ -160,14 +160,21 @@ const HwpxExport = (() => {
   // hp:pic(그림 개체) 요소 - HWPFrame.HwpObject COM 자동화로 실제 한글이 그림을 삽입한 문서를 저장해
   // 얻은 진짜 예제 XML을 그대로 본떠 만들었다(요소 순서/네임스페이스가 실제와 정확히 일치해야 한글이 연다).
   //
-  // hwpWidth/hwpHeight: 화면/표 칸에 실제로 그려질 "표시 크기"(hp:orgSz/curSz/sz, HWPUNIT 단위).
-  // pixelWidth/pixelHeight: 실제로 저장한 이미지 파일 자체의 픽셀 크기. 이 둘은 서로 다른 단위/의미인데,
-  // hc:img의 imgRect/hp:imgClip/hp:imgDim은 "이미지 파일 안에서 어느 픽셀 범위를 보여줄지"를 픽셀
-  // 좌표로 나타내는 필드라서 반드시 pixelWidth/pixelHeight를 써야 한다 - 예전 버전은 여기에도 표시
-  // 크기(hwpWidth/hwpHeight, 보통 수만 단위)를 그대로 넣는 실수가 있었다. 그러면 뷰어가 "이 이미지는
-  // 원래 20000x15000픽셀짜리"라고 잘못 믿고, 실제로는 훨씬 작은 이미지(예: 200x150픽셀)를 그 큰 좌표계의
-  // 극히 일부(왼쪽 위 모서리)로 해석해 심하게 확대/뭉개진 상태로 보여주는 원인이 된다 - 사용자가 겪은
-  // "사진이 확대되어 표시됨" 문제의 실제 원인.
+  // hwpWidth/hwpHeight: 화면/표 칸에 실제로 그려질 "표시 크기"(HWPUNIT 단위).
+  // pixelWidth/pixelHeight: 실제로 저장한 이미지 파일 자체의 픽셀 크기. hc:img의 imgRect/hp:imgClip/
+  // hp:imgDim은 "이미지 파일 안에서 어느 픽셀 범위를 보여줄지"를 픽셀 좌표로 나타내는 필드라서 반드시
+  // pixelWidth/pixelHeight를 써야 한다 - 예전에 여기 표시 크기(hwpWidth/hwpHeight)를 넣었더니 뷰어가
+  // "이 이미지는 원래 20000x15000픽셀짜리"라고 잘못 믿고 실제로는 훨씬 작은 이미지를 그 큰 좌표계의
+  // 극히 일부로 해석해 심하게 확대/뭉개진 상태로 보여주는 문제가 있었다("사진이 확대되어 표시됨").
+  //
+  // hp:orgSz는 반대로 "원본(=imgDim과 같은 픽셀값) 크기"를 넣어야 한다 - 표시 크기(hwpWidth/hwpHeight)를
+  // 그대로 넣으면 이번엔 실제 PC 한글(Hwp.exe)에서 사진이 훨씬 작게(수 mm 크기로) 표시되는 문제가
+  // 있었다(2026-08-19, "여전히 hwpx 사진은 작게 보이네" 리포트로 발견). 실제 한글이 최종 표시 크기를
+  // hp:curSz/hp:sz 그대로 쓰지 않고 "imgDim(픽셀, 원본) × (curSz/orgSz 비율)"로 재계산하기 때문 -
+  // HwpFrame.HwpObject COM 자동화로 다양한 조합을 실제로 렌더링(PDF로 저장 후 그림 크기 측정)해서
+  // 확인했다: orgSz=픽셀값, curSz/sz=표시 크기로 두면 이 재계산 결과가 정확히 의도한 표시 크기가 되고,
+  // imgRect/imgClip/imgDim은 그대로 픽셀값이라 위 확대 버그도 재발하지 않는다(hc:scaMatrix로 비율을
+  // 넣는 방법도 시도했으나 실제 한글이 그 값을 아예 무시하는 것으로 확인되어 폐기).
   function buildPicElement(doc, binaryId, hwpWidth, hwpHeight, pixelWidth, pixelHeight) {
     const picId = String(1000000000 + Math.floor(Math.random() * 900000000));
     const pic = el(doc, "hp:pic", {
@@ -184,7 +191,7 @@ const HwpxExport = (() => {
       reverse: "0"
     });
     pic.appendChild(el(doc, "hp:offset", { x: "0", y: "0" }));
-    pic.appendChild(el(doc, "hp:orgSz", { width: String(hwpWidth), height: String(hwpHeight) }));
+    pic.appendChild(el(doc, "hp:orgSz", { width: String(pixelWidth), height: String(pixelHeight) }));
     pic.appendChild(el(doc, "hp:curSz", { width: String(hwpWidth), height: String(hwpHeight) }));
     pic.appendChild(el(doc, "hp:flip", { horizontal: "0", vertical: "0" }));
     pic.appendChild(
