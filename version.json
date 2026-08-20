@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "1.22",
+  "versionCode": 24,
+  "versionName": "1.23",
   "apkUrl": "https://green3077.github.io/sobang1004/fire-inspection.apk",
-  "notes": "이행완료보고서(HWPX) 사진 관련 2가지 버그 수정 - (1) 투명 배경(PNG) 사진이 PC 한글에서 깨진 그림 아이콘으로 보이던 문제, (2) 사진이 실제 한글에서 아주 작게(수mm) 표시되던 문제"
+  "notes": "지적사항 상태 필터 칩 추가, 파일 드래그 업로드, 명령어 기록 화면, 이행완료보고서 정렬/줄바꿈 수정, 다중 건물(본관/신관) 인식 수정 등"
 }
