@@ -307,6 +307,20 @@ input[readonly] { background: var(--neutral-bg); color: var(--text-dim); }
 }
 .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.filter-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.filter-chip {
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .region-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .region-btn {
   display: flex;

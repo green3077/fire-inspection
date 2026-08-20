@@ -7,6 +7,9 @@
   let pendingAttachments = [];   // 신규 현장 등록 시 아직 저장 전인 첨부파일 (저장 시점에 실제 siteId로 옮겨 담음)
   let sitesSortMode = "name";    // "name"(가나다순) | "region"(지역별) - 거래처 목록 정렬 방식
   let sitesSelectedRegion = null; // 지역별 모드에서 드릴다운한 지역 (구/도 이름), null이면 지역 버튼 목록 표시 중
+  let defSortMode = "name";      // 지적사항 허브(업체별) 정렬 방식, 거래처 목록과 동일한 개념
+  let defSelectedRegion = null;
+  let defFilters = new Set();    // 지적사항 허브 상태 필터: "pending"|"none"|"open"|"resolved" 중 선택된 것들 (OR 조건)
   let comprehensiveTarget = null; // 현장 등록/수정 폼의 "종합점검대상/해당없음" 토글 상태: true | false | null(미정)
   // 종합점검/작동점검월을 예외적으로 직접 지정한 값 - null이면 자동계산(comprehensiveTarget+사용승인일) 사용,
   // 숫자(1~12)면 저장 시 site.comprehensiveMonthOverride/operationalMonthOverride로 저장되어 항상 우선한다.
@@ -493,14 +496,16 @@
     return `
       <div class="list-card" data-id="${s.id}">
         <div class="list-card-title">
-          <span class="list-card-title-main"><span>${escapeHtml(s.name)}</span>${inspectionScheduleBadgeHtml(s)}</span>
+          <span class="list-card-title-main">${escapeHtml(s.name)}</span>
           <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
         </div>
         <div class="site-card-menu hidden" data-menu>
           <button type="button" data-menu-edit>수정</button>
           <button type="button" class="danger" data-menu-delete>삭제</button>
         </div>
-        <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}${s.contactName ? " · 담당자: " + escapeHtml(s.contactName) : ""}</div>
+        ${inspectionScheduleBadgeHtml(s) ? `<div class="list-card-sub">${inspectionScheduleBadgeHtml(s)}</div>` : ""}
+        <div class="list-card-sub">${s.address ? "📍 " + escapeHtml(s.address) : "주소 미입력"}</div>
+        ${s.contactName ? `<div class="list-card-sub">담당자: ${escapeHtml(s.contactName)}</div>` : ""}
         <div class="list-card-sub">${last ? `마지막 점검일: ${escapeHtml(last.completedDate || last.scheduledDate)} · 점검자: ${escapeHtml(last.inspector || "-")}` : "점검 이력 없음"}</div>
         <div class="list-card-sub site-card-phone-row">
           <span>${s.contactPhone ? "📞 " + escapeHtml(formatPhone(s.contactPhone)) : "연락처 미입력"}</span>
@@ -1578,51 +1583,46 @@
     });
   }
 
-  async function renderDeficiencyHub() {
-    const [sites, defs] = await Promise.all([FireDB.getAllSites(), FireDB.getAllDeficiencies()]);
-    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
-    const countsBySite = new Map();
-    defs.forEach((d) => {
-      const c = countsBySite.get(d.siteId) || { open: 0, resolved: 0 };
-      d.resolved ? c.resolved++ : c.open++;
-      countsBySite.set(d.siteId, c);
-    });
-    const list = $("#deficiencyHubList");
-    if (sites.length === 0) {
-      list.innerHTML = `<div class="empty-state">등록된 현장이 없습니다.</div>`;
-      return;
-    }
-    list.innerHTML = sites.map((s) => {
-      const c = countsBySite.get(s.id) || { open: 0, resolved: 0 };
-      // 지적사항이 하나도 없는 현장은 "확인해봤는데 정말 없음"(deficiencyReviewed로 명시적으로
-      // 표시함)과 "신규 등록이라 아직 확인 전"을 구분한다 - 둘 다 그냥 "지적사항 없음"이라고
-      // 하면 아직 검토 안 한 신규 거래처도 이미 확인 끝난 것처럼 보여서 놓치기 쉽다.
-      const noneBadge = s.deficiencyReviewed
-        ? `<span class="badge badge-scheduled">지적사항 없음</span>`
-        : `<span class="badge badge-pending">검토중</span>`;
-      const badges = [
-        c.open > 0 ? `<span class="badge badge-open">미해결 ${c.open}</span>` : "",
-        c.resolved > 0 ? `<span class="badge badge-resolved">해결 ${c.resolved}</span>` : "",
-        (c.open === 0 && c.resolved === 0) ? noneBadge : ""
-      ].join(" ");
-      return `
-        <div class="list-card" data-site="${s.id}">
-          <div class="list-card-title">
-            <span class="list-card-title-main">${escapeHtml(s.name)}</span>
-            <span class="list-card-title-right">
-              <span class="list-card-badges">${badges}</span>
-              <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
-            </span>
-          </div>
-          <div class="site-card-menu hidden" data-menu>
-            <button type="button" data-menu-edit>수정</button>
-            <button type="button" class="danger" data-menu-delete>삭제</button>
-          </div>
-          <div class="list-card-sub">${escapeHtml(s.address || "")}</div>
+  // 지적사항이 하나도 없는 현장은 "확인해봤는데 정말 없음"(deficiencyReviewed로 명시적으로
+  // 표시함)과 "신규 등록이라 아직 확인 전"을 구분한다 - 둘 다 그냥 "지적사항 없음"이라고
+  // 하면 아직 검토 안 한 신규 거래처도 이미 확인 끝난 것처럼 보여서 놓치기 쉽다.
+  function deficiencySiteStatuses(c, s) {
+    const statuses = [];
+    if (c.open > 0) statuses.push("open");
+    if (c.resolved > 0) statuses.push("resolved");
+    if (c.open === 0 && c.resolved === 0) statuses.push(s.deficiencyReviewed ? "none" : "pending");
+    return statuses;
+  }
+
+  function deficiencyHubCardHtml(s, c) {
+    const noneBadge = s.deficiencyReviewed
+      ? `<span class="badge badge-scheduled">지적사항 없음</span>`
+      : `<span class="badge badge-pending">검토중</span>`;
+    const badges = [
+      c.open > 0 ? `<span class="badge badge-open">미해결 ${c.open}</span>` : "",
+      c.resolved > 0 ? `<span class="badge badge-resolved">해결 ${c.resolved}</span>` : "",
+      (c.open === 0 && c.resolved === 0) ? noneBadge : ""
+    ].join(" ");
+    return `
+      <div class="list-card" data-site="${s.id}">
+        <div class="list-card-title">
+          <span class="list-card-title-main">${escapeHtml(s.name)}</span>
+          <span class="list-card-title-right">
+            <span class="list-card-badges">${badges}</span>
+            <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+          </span>
         </div>
-      `;
-    }).join("");
-    $$("#deficiencyHubList .list-card").forEach((el) => {
+        <div class="site-card-menu hidden" data-menu>
+          <button type="button" data-menu-edit>수정</button>
+          <button type="button" class="danger" data-menu-delete>삭제</button>
+        </div>
+        <div class="list-card-sub">${escapeHtml(s.address || "")}</div>
+      </div>
+    `;
+  }
+
+  function bindDeficiencyHubCardClicks(container) {
+    Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
       const id = el.dataset.site;
       el.addEventListener("click", () => openSiteDeficiencies(id));
       const menuBtn = el.querySelector("[data-menu-btn]");
@@ -1647,6 +1647,100 @@
       });
     });
   }
+
+  function renderDeficiencyHubByRegion(sites, countsBySite) {
+    const list = $("#deficiencyHubList");
+    if (defSelectedRegion) {
+      const inRegion = sites.filter((s) => classifyRegion(s.address) === defSelectedRegion);
+      const backBtnHtml = `<button class="btn btn-secondary region-back-row" id="btnDefBackToRegionList">← 지역 목록으로 (${escapeHtml(defSelectedRegion)})</button>`;
+      if (inRegion.length === 0) {
+        list.innerHTML = `${backBtnHtml}<div class="empty-state">이 지역에 해당하는 거래처가 없습니다.</div>`;
+      } else {
+        list.innerHTML = backBtnHtml + inRegion.map((s) => deficiencyHubCardHtml(s, countsBySite.get(s.id) || { open: 0, resolved: 0 })).join("");
+        bindDeficiencyHubCardClicks(list);
+      }
+      $("#btnDefBackToRegionList").addEventListener("click", () => { defSelectedRegion = null; renderDeficiencyHub(); });
+      return;
+    }
+    const counts = new Map();
+    sites.forEach((s) => {
+      const region = classifyRegion(s.address);
+      counts.set(region, (counts.get(region) || 0) + 1);
+    });
+    const daeguOrder = DAEGU_DISTRICTS.filter((g) => counts.has(g));
+    const otherOrder = PROVINCE_PATTERNS.map(([, label]) => label).filter((l) => l !== "대구" && counts.has(l));
+    const orderedRegions = [...daeguOrder, ...otherOrder];
+    if (counts.has("대구 기타")) orderedRegions.push("대구 기타");
+    if (counts.has("지역 미상")) orderedRegions.push("지역 미상");
+
+    list.innerHTML = `<div class="region-grid">${orderedRegions.map((r) => `
+      <button class="region-btn" data-region="${escapeHtml(r)}">
+        <span class="region-btn-name">${escapeHtml(r)}</span>
+        <span class="region-btn-count">${counts.get(r)}개</span>
+      </button>
+    `).join("")}</div>`;
+    Array.from(list.querySelectorAll(".region-btn")).forEach((btn) => {
+      btn.addEventListener("click", () => { defSelectedRegion = btn.dataset.region; renderDeficiencyHub(); });
+    });
+  }
+
+  async function renderDeficiencyHub() {
+    const [sites, defs] = await Promise.all([FireDB.getAllSites(), FireDB.getAllDeficiencies()]);
+    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const countsBySite = new Map();
+    defs.forEach((d) => {
+      const c = countsBySite.get(d.siteId) || { open: 0, resolved: 0 };
+      d.resolved ? c.resolved++ : c.open++;
+      countsBySite.set(d.siteId, c);
+    });
+    const list = $("#deficiencyHubList");
+    if (sites.length === 0) {
+      list.innerHTML = `<div class="empty-state">등록된 현장이 없습니다.</div>`;
+      return;
+    }
+
+    const filtered = defFilters.size === 0
+      ? sites
+      : sites.filter((s) => {
+        const c = countsBySite.get(s.id) || { open: 0, resolved: 0 };
+        return deficiencySiteStatuses(c, s).some((st) => defFilters.has(st));
+      });
+
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="empty-state">선택한 조건에 맞는 거래처가 없습니다.</div>`;
+      return;
+    }
+
+    if (defSortMode === "region") {
+      renderDeficiencyHubByRegion(filtered, countsBySite);
+      return;
+    }
+    list.innerHTML = filtered.map((s) => deficiencyHubCardHtml(s, countsBySite.get(s.id) || { open: 0, resolved: 0 })).join("");
+    bindDeficiencyHubCardClicks(list);
+  }
+
+  $("#btnDefSortByName").addEventListener("click", () => {
+    defSortMode = "name";
+    defSelectedRegion = null;
+    $("#btnDefSortByName").classList.add("active");
+    $("#btnDefSortByRegion").classList.remove("active");
+    renderDeficiencyHub();
+  });
+  $("#btnDefSortByRegion").addEventListener("click", () => {
+    defSortMode = "region";
+    $("#btnDefSortByRegion").classList.add("active");
+    $("#btnDefSortByName").classList.remove("active");
+    renderDeficiencyHub();
+  });
+  $$("#defFilterToolbar .filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.filter;
+      if (defFilters.has(key)) { defFilters.delete(key); btn.classList.remove("active"); }
+      else { defFilters.add(key); btn.classList.add("active"); }
+      defSelectedRegion = null;
+      renderDeficiencyHub();
+    });
+  });
 
   async function openSiteDeficiencies(siteId) {
     currentDeficiencySiteId = siteId;
