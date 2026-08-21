@@ -390,6 +390,38 @@ const HwpxExport = (() => {
     subList.appendChild(p);
   }
 
+  // 항목이 딱 1건이라 새로 만드는 행이 표의 첫 행이자 마지막 행을 겸할 때 쓸 테두리 - 위쪽(라벨 행과
+  // 맞물리는 선)과 아래쪽(표의 실제 바깥 테두리)이 둘 다 실선이어야 하는데, 원본 템플릿의 예시 4행 중
+  // 그런 조합(위아래 둘 다 실선)인 행이 없다(첫 행은 위만 실선, 마지막 행은 아래만 실선). 마지막 행의
+  // borderFill을 복제해 위쪽 테두리만 첫 행 것으로 바꿔치기한 새 borderFill을 header.xml에 등록해서 쓴다.
+  function buildSingleRowBorderFillIds(headerDoc, firstRow, lastRow) {
+    const borderFills = headerDoc.getElementsByTagNameNS(HH, "borderFills")[0];
+    const allBorderFills = Array.from(borderFills.getElementsByTagNameNS(HH, "borderFill"));
+    const findBorderFill = (id) => allBorderFills.find((bf) => bf.getAttribute("id") === id);
+    let nextId = allBorderFills.reduce((max, bf) => Math.max(max, parseInt(bf.getAttribute("id"), 10) || 0), 0);
+
+    const firstTcs = Array.from(firstRow.getElementsByTagNameNS(HP, "tc"));
+    const lastTcs = Array.from(lastRow.getElementsByTagNameNS(HP, "tc"));
+    const newIds = lastTcs.map((lastTc, idx) => {
+      const lastBorderFill = findBorderFill(lastTc.getAttribute("borderFillIDRef"));
+      const firstBorderFill = findBorderFill(firstTcs[idx].getAttribute("borderFillIDRef"));
+      const newBorderFill = lastBorderFill.cloneNode(true);
+      nextId += 1;
+      newBorderFill.setAttribute("id", String(nextId));
+      const newTop = newBorderFill.getElementsByTagNameNS(HH, "topBorder")[0];
+      const firstTop = firstBorderFill.getElementsByTagNameNS(HH, "topBorder")[0];
+      if (newTop && firstTop) {
+        newTop.setAttribute("type", firstTop.getAttribute("type"));
+        newTop.setAttribute("width", firstTop.getAttribute("width"));
+        newTop.setAttribute("color", firstTop.getAttribute("color"));
+      }
+      borderFills.appendChild(newBorderFill);
+      return String(nextId);
+    });
+    borderFills.setAttribute("itemCnt", String(borderFills.getElementsByTagNameNS(HH, "borderFill").length));
+    return newIds;
+  }
+
   function addManifestItems(hpfDoc, items) {
     const manifest = hpfDoc.getElementsByTagNameNS(OPF, "manifest")[0];
     for (const item of items) {
@@ -402,19 +434,36 @@ const HwpxExport = (() => {
     }
   }
 
-  async function fillDeficiencyTable(doc, tbl, items, photoMap, imageState) {
+  async function fillDeficiencyTable(doc, tbl, items, photoMap, imageState, headerDoc) {
     const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
-    // tr[0]=제목, tr[1]=이행결과/안내문구, tr[2]=이행전/이행후 라벨, tr[3..]=예시 데이터 4행
-    const templateRow = trs[3].cloneNode(true);
+    // tr[0]=제목, tr[1]=이행결과/안내문구, tr[2]=이행전/이행후 라벨, tr[3..]=예시 데이터 4행 - 이 4행은
+    // 표 안에서의 위치에 따라 테두리가 다르다: 첫 행은 위쪽 라벨 행과 맞물리는 윗선만 실선, 중간
+    // 행들은 위아래 모두 점선(구분선), 마지막 행만 아래쪽이 표의 실제 바깥 테두리라 실선이다. 항목
+    // 수만큼 행을 새로 만들 때도 이 자리별 스타일을 그대로 살려야 마지막 행 아래쪽이 원본과 똑같이
+    // 실선으로 나온다(사용자 리포트: "지금은 점선인데 원본과 동일하게 해달라", 2026-08-21) - 예전엔
+    // 첫 행 스타일 하나만 모든 행에 그대로 복제해서 마지막 행 아래쪽도 항상 점선이었다.
+    const firstRowTemplate = trs[3].cloneNode(true);
+    const middleRowTemplate = trs[4].cloneNode(true);
+    const lastRowTemplate = trs[trs.length - 1].cloneNode(true);
     for (let i = 3; i < trs.length; i++) trs[i].remove();
+
+    // 항목이 딱 1건이면 그 한 행이 첫 행이자 마지막 행을 겸해야 하는데 원본 템플릿엔 그런 조합의 행이
+    // 없다 - buildSingleRowBorderFillIds로 위/아래 둘 다 실선인 테두리를 새로 만들어 쓴다.
+    const singleRowBorderFillIds = items.length === 1 && headerDoc
+      ? buildSingleRowBorderFillIds(headerDoc, firstRowTemplate, lastRowTemplate)
+      : null;
 
     const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준) - 높이는 한글이 내용에 맞춰 자동으로 늘리므로 필요 없음
 
     for (let i = 0; i < items.length; i++) {
       const def = items[i];
-      const row = templateRow.cloneNode(true);
+      const rowTemplate = i === 0 ? firstRowTemplate : (i === items.length - 1 ? lastRowTemplate : middleRowTemplate);
+      const row = rowTemplate.cloneNode(true);
       const tcs = Array.from(row.getElementsByTagNameNS(HP, "tc"));
       const [contentTc, beforeTc, afterTc] = tcs;
+      if (singleRowBorderFillIds) {
+        tcs.forEach((tc, idx) => tc.setAttribute("borderFillIDRef", singleRowBorderFillIds[idx]));
+      }
 
       tcs.forEach((tc) => {
         const addr = tc.getElementsByTagNameNS(HP, "cellAddr")[0];
@@ -471,7 +520,7 @@ const HwpxExport = (() => {
     const tbls = Array.from(sectionDoc.getElementsByTagNameNS(HP, "tbl"));
     const deficiencyTbl = tbls[tbls.length - 1];
     const imageState = { zip, count: 0, manifestItems: [] };
-    await fillDeficiencyTable(sectionDoc, deficiencyTbl, resolved, photoMap, imageState);
+    await fillDeficiencyTable(sectionDoc, deficiencyTbl, resolved, photoMap, imageState, headerDoc);
 
     if (imageState.manifestItems.length > 0) {
       addManifestItems(hpfDoc, imageState.manifestItems);
