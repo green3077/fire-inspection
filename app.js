@@ -109,6 +109,31 @@
       .catch(() => null);
   }
 
+  // 사진은 기기별 IndexedDB에만 저장된다 - 다른 사용자/기기(예: 휴대폰으로 찍어 올린 사진)에서 올린
+  // 것은 이 기기 로컬 저장소엔 원본이 없어 photoMap에 빠질 수 있다(실제 사용자가 겪은 문제: "지적사항
+  // 클릭해서 들어가면 다른 사람이 올린 사진이 안 보임"). 이미 구글 드라이브에 자동 백업된 사본이
+  // 있으면 그걸로 photoMap을 채운다 - 파일명 규칙은 backupToDrive가 지적사항 사진을 올릴 때 쓰는 것과
+  // 동일(이행전_<id>.jpg / 이행후_<id>.jpg). 이행완료보고서 생성(openCompletionReport)에서만 쓰던
+  // 로직인데, 지적사항 목록 화면(renderDeficiencies)의 사진 썸네일에도 똑같이 필요해서 공용 함수로
+  // 뺐다 - 찾은 사진은 로컬에도 저장해둬서(FireDB.addPhoto, 기존 id 그대로) 다음부터는 다시 내려받지
+  // 않고 오프라인에서도 보이게 한다.
+  async function fillMissingPhotosFromDrive(siteId, defs, photoMap) {
+    const site = await FireDB.getSite(siteId);
+    if (!site || !site.name) return;
+    const missing = [];
+    defs.forEach((def) => {
+      (def.beforePhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행전", role: "before", def }); });
+      (def.afterPhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행후", role: "after", def }); });
+    });
+    if (missing.length === 0) return;
+    await Promise.all(missing.map(async ({ id, prefix, role, def }) => {
+      const blob = await DriveBackup.fetchFile(site.name, "지적사항_사진", `${prefix}_${id}.jpg`);
+      if (!blob) return;
+      photoMap.set(id, { id, blob });
+      FireDB.addPhoto({ id, siteId, itemId: def.id, role, blob, createdAt: new Date().toISOString() }).catch(() => {});
+    }));
+  }
+
   function todayISO() {
     const d = new Date();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -1769,6 +1794,9 @@
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
+    // 다른 사용자/기기에서 올려 이 기기 로컬에는 없는 사진을 구글 드라이브 백업본으로 보충한다
+    // (fillMissingPhotosFromDrive 주석 참고) - 목록 렌더링 전에 채워야 아래 photoColHtml에서 바로 보인다.
+    await fillMissingPhotosFromDrive(currentDeficiencySiteId, currentDeficiencies, photoMap);
 
     const list = $("#deficienciesList");
     if (currentDeficiencies.length === 0) {
@@ -2053,23 +2081,11 @@
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
-
-    // 사진은 기기별 IndexedDB에만 저장된다 - 휴대폰으로 찍어 올린 사진은 PC 등 다른 기기의
-    // 로컬 저장소엔 원본이 없어 여기서 빠질 수 있다(실제 사용자가 겪은 문제: "PC에서 이행완료보고서
-    // 만들면 텍스트는 나오는데 사진은 안 나옴"). 이미 구글 드라이브에 자동 백업된 사본이 있으면
-    // 그걸로 채운다 - 파일명 규칙은 backupToDrive가 지적사항 사진을 올릴 때 쓰는 것과 동일
-    // (이행전_<id>.jpg / 이행후_<id>.jpg). 둘 다에 없으면 기존과 동일하게 "사진 없음"으로 표시된다.
-    if (site && site.name) {
-      const missing = [];
-      resolved.forEach((def) => {
-        (def.beforePhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행전" }); });
-        (def.afterPhotoIds || []).forEach((id) => { if (!photoMap.has(id)) missing.push({ id, prefix: "이행후" }); });
-      });
-      await Promise.all(missing.map(async ({ id, prefix }) => {
-        const blob = await DriveBackup.fetchFile(site.name, "지적사항_사진", `${prefix}_${id}.jpg`);
-        if (blob) photoMap.set(id, { id, blob });
-      }));
-    }
+    // 사진은 기기별 IndexedDB에만 저장된다 - 휴대폰으로 찍어 올린 사진은 PC 등 다른 기기의 로컬
+    // 저장소엔 원본이 없어 여기서 빠질 수 있다(실제 사용자가 겪은 문제: "PC에서 이행완료보고서
+    // 만들면 텍스트는 나오는데 사진은 안 나옴"). fillMissingPhotosFromDrive가 구글 드라이브 백업본으로
+    // 채운다 - 둘 다에 없으면 기존과 동일하게 "사진 없음"으로 표시된다.
+    await fillMissingPhotosFromDrive(currentDeficiencySiteId, resolved, photoMap);
 
     function photoCellHtml(def, role) {
       const ids = role === "before" ? def.beforePhotoIds : def.afterPhotoIds;
