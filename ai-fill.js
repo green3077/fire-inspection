@@ -289,7 +289,13 @@ const AiFill = (() => {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 소방시설 지적사항(불량내역) 목록을 추출해줘.";
-    const parts = await buildParts(file, ext, instruction);
+    // analyzeClientFile과 마찬가지로 xlsx/docx/hwpx는 buildParts에 docText를 넘겨야 한다 - 이걸
+    // 빠뜨리면 buildParts가 항상 docText 없음으로 판단해 null을 반환하고(비-PDF/이미지 형식은 전부),
+    // 여기선 조용히 rows:null로 이어져 호출부(app.js)가 "지원하지 않는 파일 형식"으로 잘못 표시한다
+    // (실제 사용자 리포트, 2026-08-22 - 2026-08-19에 buildParts가 docText 인자를 받도록 바뀌면서
+    // analyzeClientFile 호출부만 고쳐지고 여기는 놓친 회귀 버그).
+    const docText = await extractDocText(file, ext);
+    const parts = await buildParts(file, ext, instruction, docText);
     if (!parts) return { rows: null, typeLabel: extTypeLabel(ext) };
     const result = await callGemini({ system: DEFICIENCY_SYSTEM, parts, schema: DEFICIENCY_SCHEMA, maxTokens: 8000 });
     return { rows: result.items && result.items.length ? result.items : null, typeLabel: extTypeLabel(ext) + " (AI 분석)" };
