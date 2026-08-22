@@ -1756,15 +1756,42 @@
     });
   }
 
-  async function renderDeficiencyHub() {
-    const [sites, defs] = await Promise.all([FireDB.getAllSites(), FireDB.getAllDeficiencies()]);
-    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
-    const countsBySite = new Map();
-    defs.forEach((d) => {
-      const c = countsBySite.get(d.siteId) || { open: 0, resolved: 0 };
-      d.resolved ? c.resolved++ : c.open++;
-      countsBySite.set(d.siteId, c);
+  // 업체 카드의 미해결/해결 배지는 방문 회차가 여러 개여도 전체를 합산하지 않고, 가장 최근 회차
+  // (날짜 기준)만 반영한다(사용자 요청, 2026-08-22 - "옛날 방문 결과까지 다 더해서 보이면 지금
+  // 상태를 바로 알기 어렵다"는 취지). 아직 회차로 마이그레이션되지 않은 옛 지적사항(roundId 없음)만
+  // 있는 업체는 그 전체를 하나의 암묵적 회차로 보고 그대로 합산한다 - 회차 화면을 한 번도 열어보지
+  // 않은 업체의 배지가 갑자기 "0건"으로 비어 보이는 회귀를 막기 위함.
+  function latestRoundCountsBySite(sites, defs, rounds) {
+    const roundsBySite = new Map();
+    rounds.forEach((r) => {
+      const arr = roundsBySite.get(r.siteId) || [];
+      arr.push(r);
+      roundsBySite.set(r.siteId, arr);
     });
+    const countsBySite = new Map();
+    sites.forEach((s) => {
+      const siteRounds = roundsBySite.get(s.id) || [];
+      let latestRoundId = null;
+      if (siteRounds.length > 0) {
+        siteRounds.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        latestRoundId = siteRounds[0].id;
+      }
+      const c = { open: 0, resolved: 0 };
+      defs.forEach((d) => {
+        if (d.siteId !== s.id) return;
+        const inLatest = latestRoundId ? d.roundId === latestRoundId : !d.roundId;
+        if (!inLatest) return;
+        d.resolved ? c.resolved++ : c.open++;
+      });
+      countsBySite.set(s.id, c);
+    });
+    return countsBySite;
+  }
+
+  async function renderDeficiencyHub() {
+    const [sites, defs, rounds] = await Promise.all([FireDB.getAllSites(), FireDB.getAllDeficiencies(), FireDB.getAllRounds()]);
+    sites.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const countsBySite = latestRoundCountsBySite(sites, defs, rounds);
     const list = $("#deficiencyHubList");
     if (sites.length === 0) {
       list.innerHTML = `<div class="empty-state">등록된 현장이 없습니다.</div>`;
@@ -2806,8 +2833,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 28;
-  const APP_VERSION_NAME = "1.27";
+  const APP_VERSION_CODE = 29;
+  const APP_VERSION_NAME = "1.28";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/sobang1004/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가

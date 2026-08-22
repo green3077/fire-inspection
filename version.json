@@ -1,6 +1,6 @@
 {
-  "versionCode": 28,
-  "versionName": "1.27",
+  "versionCode": 29,
+  "versionName": "1.28",
   "apkUrl": "https://green3077.github.io/sobang1004/fire-inspection.apk",
-  "notes": "지적사항을 방문 날짜별 회차로 구분 - 업체 클릭 시 날짜별 보고서 목록이 보이고 각각 열어서 수정 가능"
+  "notes": "지적사항 목록의 미해결/해결 배지가 전체 회차 합산이 아닌 최신 방문 회차 기준으로 표시되도록 수정"
 }

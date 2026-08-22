@@ -276,6 +276,7 @@ const FireDB = (() => {
     },
     getRound: (id) => fbGet(`deficiencyRounds/${id}`),
     getRoundsBySite: async (siteId) => (await fbGetAll("deficiencyRounds")).filter((r) => r.siteId === siteId),
+    getAllRounds: () => fbGetAll("deficiencyRounds"),
 
     // Attachments (현장에 첨부하는 일반 파일 - 사진과 같은 이유로 아직 이 기기에만 저장)
     async addAttachment(att) {
