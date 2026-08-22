@@ -125,6 +125,32 @@ function pickMonth(title) {
   });
 }
 
+// 날짜(YYYY-MM-DD) 하나를 입력받는 작은 모달 - 지적사항 회차의 방문 날짜를 새로 만들거나 수정할 때 사용.
+// 확인 시 입력된 날짜 문자열, 취소 시 null 반환.
+function promptDate(title, defaultValue) {
+  const modal = document.getElementById("roundDateModal");
+  const titleEl = document.getElementById("roundDateModalTitle");
+  const input = document.getElementById("roundDateInput");
+  const okBtn = document.getElementById("roundDateOkBtn");
+  const cancelBtn = document.getElementById("roundDateCancelBtn");
+  titleEl.textContent = title;
+  input.value = defaultValue || "";
+  modal.classList.remove("hidden");
+  input.focus();
+  return new Promise((resolve) => {
+    function cleanup(result) {
+      modal.classList.add("hidden");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onOk() { cleanup(input.value || null); }
+    function onCancel() { cleanup(null); }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
 // "pdf" | "hwpx" | null(취소) 반환
 function pickShareFormat() {
   const modal = document.getElementById("shareFormatModal");

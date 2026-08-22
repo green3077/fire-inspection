@@ -383,6 +383,7 @@
     "screen-site-form": "btnCancelSiteForm",
     "screen-site-detail": "btnBackToSites",
     "screen-photo-gallery": "btnBackFromGallery",
+    "screen-deficiency-rounds": "btnBackFromRounds",
     "screen-deficiencies": "btnBackFromDeficiencies",
     "screen-completion-report": "btnBackFromCompletionReport"
   };
@@ -1581,7 +1582,13 @@
   });
 
   // ================= 지적사항 / 이행완료 (점검 기록과 완전히 분리, 현장에만 귀속) =================
+  // 지적사항은 "회차"(deficiencyRounds) 단위로 묶인다 - 업체 하나를 여러 날짜에 방문할 때마다
+  // 방문 날짜별로 독립된 지적사항 묶음(=그 날짜의 이행완료보고서)이 남아, 나중에 업체를 클릭하면
+  // 날짜별 목록이 보이고 어느 것이든 다시 열어 수정할 수 있다(사용자 요청, 2026-08-22). 회차는
+  // 점검(inspections)과는 별개의 가벼운 개념이다 - "점검이 먼저 있어야 지적사항을 추가할 수 있다"는
+  // 예전 마찰(2026-08-11에 지적사항을 점검에서 완전히 분리했던 이유)을 되풀이하지 않기 위함.
   let currentDeficiencySiteId = null;
+  let currentRoundId = null;
   let currentDeficiencies = [];
 
   function findDeficiency(defId) {
@@ -1592,6 +1599,7 @@
     return {
       id: FireDB.genId(),
       siteId: fields.siteId || currentDeficiencySiteId,
+      roundId: fields.roundId || currentRoundId,
       category: fields.category || "",
       floor: fields.floor || "",
       location: fields.location || "",
@@ -1688,7 +1696,7 @@
   function bindDeficiencyHubCardClicks(container) {
     Array.from(container.querySelectorAll(".list-card")).forEach((el) => {
       const id = el.dataset.site;
-      el.addEventListener("click", () => openSiteDeficiencies(id));
+      el.addEventListener("click", () => openSiteRounds(id));
       const menuBtn = el.querySelector("[data-menu-btn]");
       const menu = el.querySelector("[data-menu]");
       menuBtn.addEventListener("click", (e) => {
@@ -1806,9 +1814,124 @@
     });
   });
 
-  async function openSiteDeficiencies(siteId) {
+  // 회차 도입 전(2026-08-22 이전)에 만들어진 지적사항은 roundId가 아예 없다 - 그런 현장을 처음
+  // 열 때 딱 한 번, 그 기존 지적사항 전체를 "기존 기록"이라는 회차 하나로 묶어준다(가장 이른
+  // 생성일을 회차 날짜로 사용). 이미 회차가 하나라도 있으면 마이그레이션할 게 없으므로 그냥 통과.
+  async function ensureRoundsForSite(siteId) {
+    const rounds = await FireDB.getRoundsBySite(siteId);
+    if (rounds.length > 0) return rounds;
+    const legacyDefs = (await FireDB.getDeficienciesBySite(siteId)).filter((d) => !d.roundId);
+    if (legacyDefs.length === 0) return rounds;
+    legacyDefs.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    const date = (legacyDefs[0].createdAt || new Date().toISOString()).slice(0, 10);
+    const round = await FireDB.addRound({ siteId, date, label: "기존 기록", createdAt: new Date().toISOString() });
+    for (const def of legacyDefs) {
+      await FireDB.updateDeficiency(def.id, { roundId: round.id });
+    }
+    return [round];
+  }
+
+  async function openSiteRounds(siteId) {
     currentDeficiencySiteId = siteId;
-    currentDeficiencies = await FireDB.getDeficienciesBySite(siteId);
+    await ensureRoundsForSite(siteId);
+    await renderDeficiencyRounds();
+    showScreen("screen-deficiency-rounds");
+  }
+
+  async function renderDeficiencyRounds() {
+    const site = await FireDB.getSite(currentDeficiencySiteId);
+    const rounds = await FireDB.getRoundsBySite(currentDeficiencySiteId);
+    rounds.sort((a, b) => (b.date || "").localeCompare(a.date || "")); // 최근 방문이 위로
+
+    $("#deficiencyRoundsHeader").innerHTML = `
+      <h2>${escapeHtml(site ? site.name : "")} · 지적사항 회차</h2>
+      <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site && site.address ? site.address : "-")}</span></div>
+    `;
+    // "지적사항 없음"은 회차를 하나도 안 만들고 "확인은 했지만 없다"고 표시하는 버튼이라, 이미
+    // 회차가 있으면(=실제로 뭔가 등록했으면) 의미가 없어 숨긴다.
+    $("#btnMarkNoDeficiency").classList.toggle("hidden", rounds.length > 0);
+
+    const list = $("#deficiencyRoundsList");
+    if (rounds.length === 0) {
+      list.innerHTML = `<div class="empty-state">${site && site.deficiencyReviewed
+        ? "지적사항 없음으로 확인된 현장입니다."
+        : "아직 등록된 점검 회차가 없습니다.<br>'+ 새 점검 회차 시작'으로 시작해보세요."}</div>`;
+      return;
+    }
+
+    const defsByRound = await Promise.all(rounds.map((r) => FireDB.getDeficienciesByRound(r.id)));
+    list.innerHTML = rounds.map((r, i) => {
+      const defs = defsByRound[i];
+      const open = defs.filter((d) => !d.resolved).length;
+      const resolved = defs.filter((d) => d.resolved).length;
+      const badges = [
+        open > 0 ? `<span class="badge badge-open">미해결 ${open}</span>` : "",
+        resolved > 0 ? `<span class="badge badge-resolved">해결 ${resolved}</span>` : "",
+        (open === 0 && resolved === 0) ? `<span class="badge badge-scheduled">항목 없음</span>` : ""
+      ].join(" ");
+      return `
+        <div class="list-card" data-round="${r.id}">
+          <div class="list-card-title">
+            <span class="list-card-title-main">${escapeHtml(r.date || "")}${r.label ? ` · ${escapeHtml(r.label)}` : ""}</span>
+            <span class="list-card-title-right">
+              <span class="list-card-badges">${badges}</span>
+              <button type="button" class="list-card-menu-btn" data-menu-btn>⋯</button>
+            </span>
+          </div>
+          <div class="site-card-menu hidden" data-menu>
+            <button type="button" data-menu-edit-date>날짜 수정</button>
+            <button type="button" class="danger" data-menu-delete>삭제</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    Array.from(list.querySelectorAll(".list-card")).forEach((el) => {
+      const roundId = el.dataset.round;
+      el.addEventListener("click", () => openRoundDeficiencies(currentDeficiencySiteId, roundId));
+      const menuBtn = el.querySelector("[data-menu-btn]");
+      const menu = el.querySelector("[data-menu]");
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const wasOpen = menu === openSiteCardMenu;
+        closeSiteCardMenu();
+        if (!wasOpen) { menu.classList.remove("hidden"); openSiteCardMenu = menu; }
+      });
+      menu.addEventListener("click", (e) => e.stopPropagation());
+      menu.querySelector("[data-menu-edit-date]").addEventListener("click", async () => {
+        closeSiteCardMenu();
+        const round = rounds.find((r) => r.id === roundId);
+        const newDate = await promptDate("점검 날짜 수정", round.date);
+        if (!newDate) return;
+        await FireDB.updateRound(roundId, { date: newDate });
+        await renderDeficiencyRounds();
+      });
+      menu.querySelector("[data-menu-delete]").addEventListener("click", async () => {
+        closeSiteCardMenu();
+        const ok = await confirmDialog("이 점검 회차와 등록된 모든 지적사항을 삭제할까요? 이 작업은 되돌릴 수 없습니다.");
+        if (!ok) return;
+        await FireDB.deleteRound(roundId);
+        await renderDeficiencyRounds();
+      });
+    });
+  }
+
+  $("#btnAddRound").addEventListener("click", async () => {
+    const date = await promptDate("새 점검 회차 날짜", todayISO());
+    if (!date) return;
+    const round = await FireDB.addRound({ siteId: currentDeficiencySiteId, date, label: "", createdAt: new Date().toISOString() });
+    await openRoundDeficiencies(currentDeficiencySiteId, round.id);
+  });
+
+  $("#btnBackFromRounds").addEventListener("click", async () => {
+    await renderDeficiencyHub();
+    showScreen("screen-deficiency-hub");
+  });
+
+  async function openRoundDeficiencies(siteId, roundId) {
+    currentDeficiencySiteId = siteId;
+    currentRoundId = roundId;
+    currentDeficiencies = await FireDB.getDeficienciesByRound(roundId);
     currentDeficiencies.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
     await renderDeficiencies();
     showScreen("screen-deficiencies");
@@ -1818,18 +1941,15 @@
   async function renderDeficiencies() {
     revokeObjectUrls();
     const site = await FireDB.getSite(currentDeficiencySiteId);
+    const round = await FireDB.getRound(currentRoundId);
     const open = currentDeficiencies.filter((d) => !d.resolved).length;
     const resolved = currentDeficiencies.filter((d) => d.resolved).length;
     $("#deficiencyHeader").innerHTML = `
       <h2>${escapeHtml(site ? site.name : "")} · 지적사항 관리</h2>
+      <div class="report-meta-row"><span class="label">점검 날짜</span><span>${escapeHtml(round ? round.date : "-")}${round && round.label ? ` (${escapeHtml(round.label)})` : ""}</span></div>
       <div class="report-meta-row"><span class="label">주소</span><span>${escapeHtml(site && site.address ? site.address : "-")}</span></div>
       <div class="report-meta-row"><span class="label">미해결 / 해결</span><span>${open}건 / ${resolved}건</span></div>
-      ${currentDeficiencies.length === 0
-        ? `<div class="report-meta-row"><span class="label">상태</span><span>${site && site.deficiencyReviewed ? "지적사항 없음 (확인됨)" : "검토중 (아직 확인 전)"}</span></div>`
-        : ""}
     `;
-    // "지적사항 없음" 버튼은 지적사항이 하나도 없을 때만 의미가 있다(이미 등록된 게 있으면 모순).
-    $("#btnMarkNoDeficiency").classList.toggle("hidden", currentDeficiencies.length > 0);
 
     const photos = await FireDB.getPhotosBySite(currentDeficiencySiteId);
     const photoMap = new Map(photos.map((p) => [p.id, p]));
@@ -1999,8 +2119,8 @@
   }
 
   $("#btnBackFromDeficiencies").addEventListener("click", async () => {
-    await renderDeficiencyHub();
-    showScreen("screen-deficiency-hub");
+    await renderDeficiencyRounds();
+    showScreen("screen-deficiency-rounds");
   });
 
   $("#btnAddDeficiency").addEventListener("click", async () => {
@@ -2036,7 +2156,7 @@
     if (!ok) return;
     await FireDB.updateSite(currentDeficiencySiteId, { deficiencyReviewed: true });
     toast("지적사항 없음으로 표시했습니다.");
-    await renderDeficiencies();
+    await renderDeficiencyRounds();
   });
 
   // "지적사항 자료 올리기"를 누르면 바로 OS 파일 선택창을 여는 대신, 파일 선택 버튼과 드롭 영역을
@@ -2686,8 +2806,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 27;
-  const APP_VERSION_NAME = "1.26";
+  const APP_VERSION_CODE = 28;
+  const APP_VERSION_NAME = "1.27";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/sobang1004/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가

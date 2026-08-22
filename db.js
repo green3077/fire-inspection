@@ -165,6 +165,12 @@ const FireDB = (() => {
       for (const insp of inspections) {
         await api.deleteInspection(insp.id);
       }
+      const rounds = (await fbGetAll("deficiencyRounds")).filter((r) => r.siteId === id);
+      for (const round of rounds) {
+        await api.deleteRound(round.id);
+      }
+      // 위 회차 삭제가 회차에 속한 지적사항은 다 지우지만, 회차 이전(마이그레이션 전) 데이터처럼
+      // roundId 없이 남아있는 지적사항이 있을 수 있어 이 루프로 마저 정리한다.
       const defs = (await fbGetAll("deficiencies")).filter((d) => d.siteId === id);
       for (const def of defs) {
         await api.deleteDeficiency(def.id);
@@ -245,6 +251,31 @@ const FireDB = (() => {
     getAllDeficiencies: async () => (await fbGetAll("deficiencies")).map(normalizeDeficiency),
     getDeficienciesBySite: async (siteId) =>
       (await fbGetAll("deficiencies")).filter((d) => d.siteId === siteId).map(normalizeDeficiency),
+    getDeficienciesByRound: async (roundId) =>
+      (await fbGetAll("deficiencies")).filter((d) => d.roundId === roundId).map(normalizeDeficiency),
+
+    // Deficiency Rounds (지적사항 회차 - 방문 날짜별 묶음. 점검(inspections)과는 별개의 가벼운 개념 -
+    // "점검이 먼저 있어야 지적사항을 추가할 수 있다"는 예전 마찰을 되풀이하지 않기 위해, 지적사항
+    // 전용으로 회차만 가볍게 관리한다. 사용자 요청(2026-08-22): 업체 하나에 여러 방문 날짜의
+    // 보고서가 각각 남아 나중에도 열어서 수정할 수 있어야 함).
+    async addRound(round) {
+      const id = round.id || genId();
+      return fbSet(`deficiencyRounds/${id}`, { ...round, id });
+    },
+    async updateRound(id, changes) {
+      const existing = await fbGet(`deficiencyRounds/${id}`);
+      if (!existing) throw new Error("Round not found: " + id);
+      return fbSet(`deficiencyRounds/${id}`, { ...existing, ...changes, id });
+    },
+    async deleteRound(id) {
+      const defs = (await fbGetAll("deficiencies")).filter((d) => d.roundId === id);
+      for (const def of defs) {
+        await api.deleteDeficiency(def.id);
+      }
+      return fbRemove(`deficiencyRounds/${id}`);
+    },
+    getRound: (id) => fbGet(`deficiencyRounds/${id}`),
+    getRoundsBySite: async (siteId) => (await fbGetAll("deficiencyRounds")).filter((r) => r.siteId === siteId),
 
     // Attachments (현장에 첨부하는 일반 파일 - 사진과 같은 이유로 아직 이 기기에만 저장)
     async addAttachment(att) {
