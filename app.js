@@ -1976,6 +1976,21 @@
     }
   });
 
+  $("#btnDeleteAllDeficiencies").addEventListener("click", async () => {
+    if (currentDeficiencies.length === 0) {
+      toast("삭제할 지적사항이 없습니다.");
+      return;
+    }
+    const ok = await confirmDialog(`지적사항 ${currentDeficiencies.length}건을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
+    if (!ok) return;
+    for (const def of currentDeficiencies.slice()) {
+      await FireDB.deleteDeficiency(def.id);
+    }
+    currentDeficiencies = [];
+    await renderDeficiencies();
+    toast("지적사항을 모두 삭제했습니다.");
+  });
+
   $("#btnMarkNoDeficiency").addEventListener("click", async () => {
     const ok = await confirmDialog("이 현장은 지적사항이 없는 것으로 표시할까요?");
     if (!ok) return;
@@ -2006,9 +2021,19 @@
       let rows = null;
       let lowConfidence = false;
       let typeLabel = "";
-      if (AiFill.isEnabled() && AiFill.isSupportedExt(ext)) {
+      // 구 HWP는 AiFill이 직접 다루지 못하므로(isSupportedExt에 없음) 거래처 등록 가져오기와 동일하게
+      // 먼저 hwpx로 변환해서 넘긴다 - 변환 실패 시 원본 그대로 두면 아래에서 "지원하지 않는 형식"으로
+      // 처리된다(이 문서는 표 구조가 있어야 인식되므로, 변환된 hwpx도 AI 전용 경로만 탄다 - FireImport엔
+      // hwpx 표 파서가 없다).
+      let aiFile = file;
+      if (ext === "hwp") {
+        const convertedHwpx = await ClientImport.convertHwpToHwpxViaService(file);
+        if (convertedHwpx) aiFile = new File([convertedHwpx], file.name.replace(/\.hwp$/i, ".hwpx"));
+      }
+      const aiExt = aiFile.name.split(".").pop().toLowerCase();
+      if (AiFill.isEnabled() && AiFill.isSupportedExt(aiExt)) {
         try {
-          const aiResult = await AiFill.analyzeDeficiencyFile(file);
+          const aiResult = await AiFill.analyzeDeficiencyFile(aiFile);
           rows = aiResult.rows;
           typeLabel = aiResult.typeLabel;
         } catch (aiErr) {
@@ -2028,7 +2053,7 @@
           lowConfidence = result.lowConfidence;
           typeLabel = "PDF";
         } else {
-          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${AiFill.isEnabled() ? ", .hwpx, 사진" : ""}만 가능).`, "error");
+          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${AiFill.isEnabled() ? ", .hwp, .hwpx, 사진" : ""}만 가능).`, "error");
           return;
         }
       }
