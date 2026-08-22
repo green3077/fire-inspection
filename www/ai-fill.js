@@ -283,13 +283,19 @@ const AiFill = (() => {
     required: ["items"]
   };
 
-  const DEFICIENCY_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 소방시설 지적사항(불량내역) 문서에서 각 지적 항목을 표로 추출하세요. 설비 구분, 층, 설치장소, 점검번호, 불량내용을 항목별로 정리하고, 하나의 지적사항이 여러 줄/셀에 걸쳐 나뉘어 있으면 하나의 항목으로 합치세요. 표 헤더나 안내문구는 항목으로 만들지 마세요. 지적사항이 없으면 빈 배열을 반환하세요. 반드시 JSON으로만 응답하세요.";
+  const DEFICIENCY_SYSTEM = "당신은 대한민국 소방점검 업체가 사용하는 업무용 앱의 문서 인식 도우미입니다. 업로드된 소방시설 지적사항(불량내역) 문서에서 각 지적 항목을 표로 추출하세요. 표는 보통 '설비'(설비 구분) · '층' · '설치장소' · '점검번호' · '불량내용' 5개 열로 되어 있습니다. 반드시 지켜야 할 규칙: 1) '설비' 열은 같은 구분(경보설비, 피난구조설비, 기타 등)에 속한 여러 행이 세로로 병합(rowspan)되어 첫 행에만 글자가 보이고 나머지 행은 빈칸으로 보이는 경우가 매우 흔합니다 - 이런 병합 셀은 그 병합 범위 안의 모든 행에 같은 값을 채워 넣으세요. 2) 어떤 열의 칸이 비어 보인다고 해서 옆(오른쪽) 열의 값을 그 자리로 당겨서 채우면 절대 안 됩니다 - 설비/층/설치장소/점검번호/불량내용은 각 행마다 실제로 그 열에 적힌 값만 넣고, 열 하나가 통째로 밀리는 일이 없도록 각 행을 채운 뒤 5개 값이 원래 표의 같은 행·같은 열과 정확히 대응하는지 다시 확인하세요. 3) 하나의 지적사항이 여러 줄/셀에 걸쳐 나뉘어 있으면 하나의 항목으로 합치세요. 표 헤더나 안내문구는 항목으로 만들지 마세요. 지적사항이 없으면 빈 배열을 반환하세요. 반드시 JSON으로만 응답하세요.";
 
   async function analyzeDeficiencyFile(file) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!isSupportedExt(ext)) return { unsupported: true };
     const instruction = "이 문서에서 소방시설 지적사항(불량내역) 목록을 추출해줘.";
-    const parts = await buildParts(file, ext, instruction);
+    // analyzeClientFile과 마찬가지로 xlsx/docx/hwpx는 buildParts에 docText를 넘겨야 한다 - 이걸
+    // 빠뜨리면 buildParts가 항상 docText 없음으로 판단해 null을 반환하고(비-PDF/이미지 형식은 전부),
+    // 여기선 조용히 rows:null로 이어져 호출부(app.js)가 "지원하지 않는 파일 형식"으로 잘못 표시한다
+    // (실제 사용자 리포트, 2026-08-22 - 2026-08-19에 buildParts가 docText 인자를 받도록 바뀌면서
+    // analyzeClientFile 호출부만 고쳐지고 여기는 놓친 회귀 버그).
+    const docText = await extractDocText(file, ext);
+    const parts = await buildParts(file, ext, instruction, docText);
     if (!parts) return { rows: null, typeLabel: extTypeLabel(ext) };
     const result = await callGemini({ system: DEFICIENCY_SYSTEM, parts, schema: DEFICIENCY_SCHEMA, maxTokens: 8000 });
     return { rows: result.items && result.items.length ? result.items : null, typeLabel: extTypeLabel(ext) + " (AI 분석)" };

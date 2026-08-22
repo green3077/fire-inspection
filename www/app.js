@@ -134,6 +134,44 @@
     }));
   }
 
+  // 지적사항 이행전/이행후 사진을 모바일에서 올릴 때 너무 오래 걸린다는 사용자 리포트(2026-08-22) -
+  // 원인은 압축 없이 폰 카메라 원본(보통 3000~4000px, 수 MB)을 그대로 IndexedDB에 저장하고 그대로
+  // 구글 드라이브까지 업로드하고 있었기 때문(느린 건 로컬 저장이 아니라 모바일 회선으로 원본 전체를
+  // 올리는 네트워크 구간). 화면/보고서 어디에도 원본 해상도가 필요 없으므로(hwpx-export.js도 최종
+  // 인쇄용으로 훨씬 작은 해상도로 다시 인코딩해서 씀) 저장/업로드 전에 긴 변을 최대 1600px로 줄이고
+  // JPEG 85%로 재인코딩한다. <img> 디코딩은 EXIF Orientation을 반영해서 그려주므로 회전 문제도 없다.
+  // HEIC 등 디코딩 자체가 안 되는 파일은 원본을 그대로 쓴다(느리더라도 안 올리는 것보다 낫다).
+  async function compressPhotoForUpload(file, maxDim, quality) {
+    try {
+      const url = URL.createObjectURL(file);
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+      const { naturalWidth: w, naturalHeight: h } = image;
+      const scale = Math.min(1, (maxDim || 1600) / Math.max(w, h));
+      if (scale >= 1) { URL.revokeObjectURL(url); return file; }
+      const targetW = Math.round(w * scale);
+      const targetH = Math.round(h * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.drawImage(image, 0, 0, targetW, targetH);
+      URL.revokeObjectURL(url);
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_encode_failed"))), "image/jpeg", quality || 0.85);
+      });
+      return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+    } catch (e) {
+      return file;
+    }
+  }
+
   function todayISO() {
     const d = new Date();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -1425,13 +1463,14 @@
       for (const file of files) {
         idx++;
         ImportLoading.setProgress((idx / files.length) * 100, files.length > 1 ? `사진을 저장하고 있습니다. (${idx}/${files.length})` : "사진을 저장하고 있습니다.");
+        const uploadFile = await compressPhotoForUpload(file);
         const photo = await FireDB.addPhoto({
           siteId: currentSiteId,
           itemId: SITE_GALLERY_ITEM_ID,
-          blob: file,
+          blob: uploadFile,
           createdAt: new Date().toISOString()
         });
-        await backupToDrive(currentSiteId, "현장점검_사진", `${photo.id}.jpg`, file);
+        await backupToDrive(currentSiteId, "현장점검_사진", `${photo.id}.jpg`, uploadFile);
       }
     } finally {
       ImportLoading.hide();
@@ -1915,15 +1954,16 @@
           toast("아이콘/그림 파일(SVG)은 사진으로 등록할 수 없습니다. 실제 사진 파일을 선택해주세요.", "error");
           continue;
         }
+        const uploadFile = await compressPhotoForUpload(file);
         const photo = await FireDB.addPhoto({
           siteId: currentDeficiencySiteId,
           itemId: def.id,
           role,
-          blob: file,
+          blob: uploadFile,
           createdAt: new Date().toISOString()
         });
         targetArr.push(photo.id);
-        const result = await backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, file);
+        const result = await backupToDrive(currentDeficiencySiteId, "지적사항_사진", `${role === "before" ? "이행전" : "이행후"}_${photo.id}.jpg`, uploadFile);
         if (!result && DriveBackup.isEnabled()) {
           toast("사진은 저장됐지만 구글 드라이브 자동 백업에는 실패했습니다(네트워크 확인).", "error");
         }
@@ -1976,6 +2016,21 @@
     }
   });
 
+  $("#btnDeleteAllDeficiencies").addEventListener("click", async () => {
+    if (currentDeficiencies.length === 0) {
+      toast("삭제할 지적사항이 없습니다.");
+      return;
+    }
+    const ok = await confirmDialog(`지적사항 ${currentDeficiencies.length}건을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
+    if (!ok) return;
+    for (const def of currentDeficiencies.slice()) {
+      await FireDB.deleteDeficiency(def.id);
+    }
+    currentDeficiencies = [];
+    await renderDeficiencies();
+    toast("지적사항을 모두 삭제했습니다.");
+  });
+
   $("#btnMarkNoDeficiency").addEventListener("click", async () => {
     const ok = await confirmDialog("이 현장은 지적사항이 없는 것으로 표시할까요?");
     if (!ok) return;
@@ -2006,9 +2061,19 @@
       let rows = null;
       let lowConfidence = false;
       let typeLabel = "";
-      if (AiFill.isEnabled() && AiFill.isSupportedExt(ext)) {
+      // 구 HWP는 AiFill이 직접 다루지 못하므로(isSupportedExt에 없음) 거래처 등록 가져오기와 동일하게
+      // 먼저 hwpx로 변환해서 넘긴다 - 변환 실패 시 원본 그대로 두면 아래에서 "지원하지 않는 형식"으로
+      // 처리된다(이 문서는 표 구조가 있어야 인식되므로, 변환된 hwpx도 AI 전용 경로만 탄다 - FireImport엔
+      // hwpx 표 파서가 없다).
+      let aiFile = file;
+      if (ext === "hwp") {
+        const convertedHwpx = await ClientImport.convertHwpToHwpxViaService(file);
+        if (convertedHwpx) aiFile = new File([convertedHwpx], file.name.replace(/\.hwp$/i, ".hwpx"));
+      }
+      const aiExt = aiFile.name.split(".").pop().toLowerCase();
+      if (AiFill.isEnabled() && AiFill.isSupportedExt(aiExt)) {
         try {
-          const aiResult = await AiFill.analyzeDeficiencyFile(file);
+          const aiResult = await AiFill.analyzeDeficiencyFile(aiFile);
           rows = aiResult.rows;
           typeLabel = aiResult.typeLabel;
         } catch (aiErr) {
@@ -2028,7 +2093,7 @@
           lowConfidence = result.lowConfidence;
           typeLabel = "PDF";
         } else {
-          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${AiFill.isEnabled() ? ", .hwpx, 사진" : ""}만 가능).`, "error");
+          toast(`지원하지 않는 파일 형식입니다 (.xlsx, .docx, .pdf${AiFill.isEnabled() ? ", .hwp, .hwpx, 사진" : ""}만 가능).`, "error");
           return;
         }
       }
@@ -2621,8 +2686,8 @@
   // 확인 필요), 새 버전이 있으면 외부 브라우저로 APK 다운로드 URL을 열어 다운로드->설치를 대신 시작해준다.
   // version.js의 APP_VERSION은 마지막으로 웹 파일이 바뀐 실제 날짜/시간(한국시간)이고,
   // APP_VERSION_CODE/NAME은 APK를 새로 빌드해서 배포할 때만 올리는 별개의 버전 번호다.
-  const APP_VERSION_CODE = 25;
-  const APP_VERSION_NAME = "1.24";
+  const APP_VERSION_CODE = 26;
+  const APP_VERSION_NAME = "1.25";
   const UPDATE_MANIFEST_URL = "https://green3077.github.io/sobang1004/version.json";
   const IS_NATIVE_UPDATE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   // 이 프로젝트는 번들러(webpack/vite 등)를 쓰지 않는 순수 스크립트 앱이라 @capacitor/core 전체가

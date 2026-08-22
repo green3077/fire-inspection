@@ -2,5 +2,5 @@
   "versionCode": 26,
   "versionName": "1.25",
   "apkUrl": "https://green3077.github.io/sobang1004/fire-inspection.apk",
-  "notes": "이행완료보고서 증빙자료 표 페이지 맨 위 빈 줄 제거, 전후 사진 표 점선 테두리를 실선으로 변경, 이행전/후 사진을 52x52mm 정사각형으로 강제 변환(비율 무시)"
+  "notes": "이행완료보고서 표 개선(빈 줄 제거/실선 테두리/사진 52x52mm 고정), HWP 자동변환 후 AI 지적사항 인식 안 되던 문제 수정, 지적사항/현장 갤러리 사진 업로드 속도 개선(자동 압축)"
 }

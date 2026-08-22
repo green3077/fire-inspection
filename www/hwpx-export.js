@@ -116,7 +116,20 @@ const HwpxExport = (() => {
       if (firstText && firstText.textContent.includes("지적내역서")) {
         let node = tbl;
         while (node && node.localName !== "p") node = node.parentNode;
-        if (node && node.parentNode) node.parentNode.removeChild(node);
+        if (node && node.parentNode) {
+          const parent = node.parentNode;
+          const nextP = node.nextSibling;
+          parent.removeChild(node);
+          // 원본 템플릿은 "지적내역서" 표와 다음 "이행완료 보고서 증빙자료" 표 사이에 시각적 여백을
+          // 두려고 내용 없는 빈 문단(hp:p) 한 줄을 넣어뒀다 - 위에서 표 문단만 지우면 이 빈 줄이 그대로
+          // 남아 다음 표 바로 위, 즉 그 표가 시작되는 페이지 맨 윗줄에 불필요한 빈 줄로 보인다(사용자
+          // 리포트: "두번째 페이지 맨윗줄에 한 줄이 띄워진다", 2026-08-22). 표를 감쌌던 문단과 함께
+          // 이 빈 줄도 지운다 - 다른 표를 담고 있거나 실제 텍스트가 있는 문단이면 안전하게 건드리지 않는다.
+          if (nextP && nextP.localName === "p" && !nextP.getElementsByTagNameNS(HP, "tbl").length) {
+            const hasText = Array.from(nextP.getElementsByTagNameNS(HP, "t")).some((t) => t.textContent.trim().length > 0);
+            if (!hasText) parent.removeChild(nextP);
+          }
+        }
         return;
       }
     }
@@ -272,9 +285,12 @@ const HwpxExport = (() => {
   // 원본 바이트를 그대로 표시해 일부 사진이 90도 돌아간 채 들어가는 원인이 된다. 화면에 보이는
   // 그대로(회전 반영 완료) 새로 인코딩해 내보내면 뷰어가 EXIF를 읽든 안 읽든 항상 올바른 방향으로 보인다.
   //
-  // 예전에는 셀 비율에 맞춰 가운데를 기준으로 잘라내(crop) 표 칸을 꽉 채웠으나, 사용자가 "원본 사진의
-  // 비율을 절대적으로 유지하고 표에서 잘리지 않게 해달라"고 명시적으로 요청 - 원본을 자르지 않고 그대로
-  // 다시 인코딩만 한다. 셀 안에서의 크기 조정(축소, 비율 유지, 안 잘리게)은 setCellPhoto가 담당한다.
+  // 예전에는 셀 비율에 맞춰 가운데를 기준으로 잘라냈다가(crop), 이후 원본 비율을 유지한 채 축소하는
+  // 방식(letterbox 없는 contain-fit)을 거쳐, 지금은 52x52mm 정사각형에 맞춰 가로/세로를 독립적으로
+  // 늘리는 방식이다(사용자 요청, 2026-08-22 - "비율은 조정"해서라도 무조건 52x52mm로 맞춰달라는 요청).
+  // 자르지는 않지만(crop 없음) targetWidth/targetHeight 비율이 원본과 다르면 그대로 찌그러져 그려진다 -
+  // 원본을 자르지 않는 것과 원본 비율을 유지하는 것은 별개이며, 지금은 후자를 포기했다. 셀 안에서의
+  // 목표 크기 계산은 setCellPhoto가 담당한다.
   //
   // targetWidth/targetHeight는 원본 픽셀 크기가 아니라 setCellPhoto가 계산한 "표시 크기에 맞는
   // 인쇄 해상도" 픽셀 수(폰 사진 원본보다 훨씬 작음, 아래 setCellPhoto의 EMBED_DPI 주석 참고) -
@@ -306,7 +322,7 @@ const HwpxExport = (() => {
   }
 
   // 셀 안의 "사진" 안내 문단을 지우고 그림 개체를 넣은 새 문단으로 교체. 이미지가 없으면 "사진 없음" 텍스트만 남김.
-  async function setCellPhoto(tc, blob, cellWidthHwp, imageState) {
+  async function setCellPhoto(tc, blob, imageState) {
     const doc = tc.ownerDocument;
     const subList = tc.getElementsByTagNameNS(HP, "subList")[0];
     const paras = Array.from(subList.getElementsByTagNameNS(HP, "p"));
@@ -344,22 +360,16 @@ const HwpxExport = (() => {
     }
     const { image, url, width, height } = decoded;
 
-    // 원본 비율(width/height)을 그대로 유지한 채 칸 폭(maxW)과 "한 페이지에 4건이 들어가도록 정한
-    // 행당 높이 예산"(maxH, ROW_MAX_HEIGHT_HWP) 안에 모두 들어가도록 축소한다(자르지 않음, contain-fit).
-    // 예전에는 폭 기준으로만 맞췄는데(높이는 한글이 알아서 행을 늘려준다는 전제) - 세로로 찍은 사진은
-    // 칸 폭을 다 채우면 키가 매우 커져(예: 3024x4032 사진이 약 95mm) 한 페이지에 1~2건밖에 못 담고
-    // 사진도 오히려 너무 커서 가독성이 떨어지는 문제가 있었다. 사용자가 "이행결과가 한 페이지에 4개씩
-    // (전후 사진 총 8장) 오도록" 요청 - ROW_MAX_HEIGHT_HWP는 A4 페이지 실사용 높이(84188-상단여백5668
-    // -하단여백2834=75686)에서 반복 헤더 3줄 높이(10589, 템플릿 샘플 파일 cellSz 기준)를 뺀 뒤 4로
-    // 나눈 값(16274)에서 셀 여백/줄간격 여유를 뺀 값 - HwpFrame.HwpObject COM 자동화로 실제 한글에
-    // 4건/8건짜리 보고서를 렌더링(PDF 저장 후 페이지 수 확인)해서 정확히 4건이 1페이지에 들어가는
-    // 것까지 확인했다.
-    const ROW_MAX_HEIGHT_HWP = 14800;
-    const maxW = cellWidthHwp - 200;
-    const maxH = ROW_MAX_HEIGHT_HWP;
-    const scale = Math.min(maxW / width, maxH / height);
-    const hwpWidth = Math.max(1000, Math.round(width * scale));
-    const hwpHeight = Math.max(1000, Math.round(height * scale));
+    // 이행전/이행후 사진 칸을 가로 52mm x 세로 52mm 정사각형으로 무조건 고정한다(사용자 요청,
+    // 2026-08-22) - 예전에는 원본 비율을 유지한 채(contain-fit) 52x52mm 안에 들어가도록만 축소해서
+    // 직사각형 사진은 한쪽 변이 52mm보다 작게 나왔는데, 표 전체에서 사진 칸 크기 자체가 완전히
+    // 통일되지 않는 문제가 있었다. 이제는 사용자가 명시적으로 "비율은 조정(=찌그러져도 됨)"해서라도
+    // 무조건 52x52mm로 맞춰 달라고 요청 - 가로/세로를 각각 52mm로 강제하고 원본 종횡비는 무시한다
+    // (아래 encodeImageToJpeg가 drawImage로 targetWidth x targetHeight에 그대로 늘려 넣는다).
+    // HWPUNIT는 1/7200인치이므로 52mm = 52 / 25.4 * 7200 ≈ 14740.
+    const CELL_PHOTO_SIZE_HWP = Math.round((52 / 25.4) * 7200);
+    const hwpWidth = CELL_PHOTO_SIZE_HWP;
+    const hwpHeight = CELL_PHOTO_SIZE_HWP;
 
     // 실제로 파일에 담아 내보낼 픽셀 수는 원본 그대로(폰 사진은 보통 3000~4000px대)가 아니라, 위에서
     // 정한 표시 크기(hwpWidth/hwpHeight)에 맞는 인쇄 해상도(200dpi, HWPUNIT는 1/7200인치)로 낮춘다 -
@@ -422,6 +432,29 @@ const HwpxExport = (() => {
     return newIds;
   }
 
+  // rowTemplates(이행전/이행후 사진이 들어가는 행들)가 참조하는 borderFill 중 점선(DASH)인 변을 모두
+  // 실선(SOLID)으로 바꾼다 - 항목 사이 구분선(위/아래)뿐 아니라 이행전/이행후 칸을 나누는 세로선도
+  // 점선이었는데, 원본 예시 표와 달리 실제 사용자가 실선으로 통일해 달라고 요청했다(2026-08-22).
+  // borderFill은 header.xml에 한 번만 정의되고 여러 hp:tc가 id로 공유해서 쓰는 자원이라, 각 행을
+  // 복제(cloneNode)해도 이 정의 자체를 바꿔야 실제로 인쇄되는 선이 바뀐다.
+  function convertDashedBordersToSolid(headerDoc, rowTemplates) {
+    const ids = new Set();
+    for (const row of rowTemplates) {
+      Array.from(row.getElementsByTagNameNS(HP, "tc")).forEach((tc) => {
+        const id = tc.getAttribute("borderFillIDRef");
+        if (id) ids.add(id);
+      });
+    }
+    const borderFills = headerDoc.getElementsByTagNameNS(HH, "borderFills")[0];
+    Array.from(borderFills.getElementsByTagNameNS(HH, "borderFill")).forEach((bf) => {
+      if (!ids.has(bf.getAttribute("id"))) return;
+      ["topBorder", "bottomBorder", "leftBorder", "rightBorder"].forEach((side) => {
+        const b = bf.getElementsByTagNameNS(HH, side)[0];
+        if (b && b.getAttribute("type") === "DASH") b.setAttribute("type", "SOLID");
+      });
+    });
+  }
+
   function addManifestItems(hpfDoc, items) {
     const manifest = hpfDoc.getElementsByTagNameNS(OPF, "manifest")[0];
     for (const item of items) {
@@ -434,7 +467,20 @@ const HwpxExport = (() => {
     }
   }
 
+  // tr[0..headerRowCount-1]의 모든 hp:tc에 header="1"을 표시해, 표가 여러 페이지에 걸치면 이 행들이
+  // 매 페이지 위에 반복되게 한다. 템플릿의 hp:tbl에는 이미 repeatHeader="1"이 붙어 있었지만 실제로
+  // 반복시킬 행의 hp:tc는 전부 header="0"이라 아무 행도 반복되지 않았다 - 그래서 지적사항이 4건을
+  // 넘어가 표가 2페이지로 넘어가면 2페이지 첫머리에 제목/안내문구/이행전·이행후 라벨 없이 사진 칸만
+  // 이어져 보이는 문제가 있었다(사용자 리포트, 2026-08-22).
+  function markHeaderRows(tbl, headerRowCount) {
+    const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
+    for (let i = 0; i < headerRowCount && i < trs.length; i++) {
+      Array.from(trs[i].getElementsByTagNameNS(HP, "tc")).forEach((tc) => tc.setAttribute("header", "1"));
+    }
+  }
+
   async function fillDeficiencyTable(doc, tbl, items, photoMap, imageState, headerDoc) {
+    markHeaderRows(tbl, 3);
     const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
     // tr[0]=제목, tr[1]=이행결과/안내문구, tr[2]=이행전/이행후 라벨, tr[3..]=예시 데이터 4행 - 이 4행은
     // 표 안에서의 위치에 따라 테두리가 다르다: 첫 행은 위쪽 라벨 행과 맞물리는 윗선만 실선, 중간
@@ -447,13 +493,16 @@ const HwpxExport = (() => {
     const lastRowTemplate = trs[trs.length - 1].cloneNode(true);
     for (let i = 3; i < trs.length; i++) trs[i].remove();
 
+    // trs 전체(제목/안내문구/이행전·이행후 라벨 행 + 예시 데이터 행)를 넘긴다 - 이행전/이행후 라벨을
+    // 나누는 세로 구분선(trs[2])도 점선이라, 데이터 행만 바꾸면 라벨 행 부분만 점선으로 남아 세로선이
+    // 중간에 끊겨 보인다.
+    if (headerDoc) convertDashedBordersToSolid(headerDoc, trs);
+
     // 항목이 딱 1건이면 그 한 행이 첫 행이자 마지막 행을 겸해야 하는데 원본 템플릿엔 그런 조합의 행이
     // 없다 - buildSingleRowBorderFillIds로 위/아래 둘 다 실선인 테두리를 새로 만들어 쓴다.
     const singleRowBorderFillIds = items.length === 1 && headerDoc
       ? buildSingleRowBorderFillIds(headerDoc, firstRowTemplate, lastRowTemplate)
       : null;
-
-    const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준) - 높이는 한글이 내용에 맞춰 자동으로 늘리므로 필요 없음
 
     for (let i = 0; i < items.length; i++) {
       const def = items[i];
@@ -484,8 +533,8 @@ const HwpxExport = (() => {
       // 사진으로 채워짐") - 뒤에서부터 찾아 항상 가장 최근 것이 이기도록 한다.
       const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
       const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
-      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, imageState);
-      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, imageState);
+      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, imageState);
+      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, imageState);
 
       tbl.appendChild(row);
     }

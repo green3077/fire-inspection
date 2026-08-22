@@ -52,6 +52,17 @@ const FireImport = (() => {
       if (!description && !location) continue;
       results.push({ category, floor, location, code, description });
     }
+
+    // 표의 맨 첫 항목(들)이 세로 병합된 '설비' 칸에 속하는데, 그 칸의 글자가 병합 범위 안에서 가운데
+    // 정렬되어 있어(PDF 렌더링 특성) 정작 첫 줄이 아니라 그 아래 줄과 같은 높이에 찍히는 경우가 있다.
+    // 그러면 위의 순방향 상속(lastCategory)으로는 맨 앞 항목(들)만 설비 값을 못 받고 비어 남는다 -
+    // 표에서 처음 발견된 값으로 그 앞의 빈 항목들을 채워준다(뒤에서 앞으로 상속되는 다른 항목이 그
+    // 사이에 끼어들 수 없는, 표의 맨 처음 구간에서만 안전하게 적용 가능).
+    const firstCatIdx = results.findIndex((r) => r.category);
+    if (firstCatIdx > 0) {
+      const val = results[firstCatIdx].category;
+      for (let i = 0; i < firstCatIdx; i++) results[i].category = val;
+    }
     return results.length ? results : null;
   }
 
@@ -91,6 +102,26 @@ const FireImport = (() => {
     return null;
   }
 
+  // 같은 줄(같은 y) 안에서 글자들을 x간격(12pt 초과)으로만 나눠 칸을 추정한다 - 표 헤더처럼 모든 칸에
+  // 글자가 있는 줄에서는 잘 맞지만, 세로 병합된 칸이 있는 줄(예: '설비' 칸이 비어 보이는 줄)에서 이
+  // 방식을 그대로 쓰면 있는 칸들이 앞으로 밀려버린다 - 그래서 헤더를 찾은 뒤에는 이 함수를 헤더 줄
+  // 인식에만 쓰고, 실제 데이터 줄은 아래 열 경계 기반 방식으로 재구성한다.
+  function groupByGap(lineItems) {
+    const groups = [];
+    let cur = [];
+    let lastEndX = null;
+    lineItems.forEach((it) => {
+      if (lastEndX !== null && it.x - lastEndX > 12) {
+        groups.push(cur);
+        cur = [];
+      }
+      cur.push(it);
+      lastEndX = it.x + it.str.length * 3.5;
+    });
+    if (cur.length) groups.push(cur);
+    return groups;
+  }
+
   async function extractPdfRows(file) {
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
@@ -119,21 +150,87 @@ const FireImport = (() => {
         lines.get(key).push(it);
       });
       const sortedYs = Array.from(lines.keys()).sort((a, b) => b - a);
-      sortedYs.forEach((y) => {
-        const lineItems = lines.get(y).sort((a, b) => a.x - b.x);
-        const cols = [];
-        let cur = "";
-        let lastEndX = null;
-        lineItems.forEach((it) => {
-          if (lastEndX !== null && it.x - lastEndX > 12) {
-            cols.push(cur);
-            cur = "";
-          }
-          cur += it.str;
-          lastEndX = it.x + it.str.length * 3.5;
+
+      // "설비/층/설치장소/점검번호/불량내용" 표 헤더 줄을 찾아 각 열의 x 시작좌표를 알아낸다 - 이 헤더가
+      // 있는 문서(자체 표준 지적내역서 양식)에서만 아래 열 경계 기반 재구성을 적용하고, 못 찾으면(다른
+      // 업체 양식 등) 예전처럼 줄 안 글자 간격만으로 나누는 방식 그대로 처리한다.
+      let headerColsX = null;
+      let headerY = null;
+      let headerTexts = null;
+      for (const y of sortedYs) {
+        const groups = groupByGap(lines.get(y).sort((a, b) => a.x - b.x));
+        const texts = groups.map((g) => g.map((it) => it.str).join(""));
+        if (
+          texts.some((t) => t.includes("설비")) &&
+          texts.some((t) => t.includes("불량") || t.includes("내용") || t.includes("지적")) &&
+          texts.some((t) => t.includes("설치장소") || t.includes("위치"))
+        ) {
+          headerColsX = groups.map((g) => g[0].x);
+          headerY = y;
+          headerTexts = texts;
+          break;
+        }
+      }
+
+      if (!headerColsX || headerColsX.length < 4) {
+        sortedYs.forEach((y) => {
+          allRows.push(groupByGap(lines.get(y).sort((a, b) => a.x - b.x)).map((g) => g.map((it) => it.str).join("")));
         });
-        if (cur) cols.push(cur);
-        allRows.push(cols);
+        continue;
+      }
+
+      // rowsToDeficiencies는 allRows 안에서 헤더 줄을 직접 찾아 열 매핑을 만드므로, 아래에서 재구성한
+      // 데이터 줄들 앞에 원래 헤더 줄 텍스트를 그대로 다시 넣어준다(재구성한 줄들만 넣으면 헤더를 못
+      // 찾아 표 전체가 인식 실패로 처리된다).
+      allRows.push(headerTexts);
+
+      // 열 경계 = 인접한 두 헤더 칸 x좌표의 중간지점. 헤더 라벨의 시작 x를 그대로 경계로 쓰면 실제 칸
+      // 내용의 시작 위치가 라벨보다 앞서는 경우 오분류가 생기므로 중간값을 기준으로 삼는다.
+      const bounds = [];
+      for (let i = 0; i < headerColsX.length - 1; i++) bounds.push((headerColsX[i] + headerColsX[i + 1]) / 2);
+      const colOf = (x) => {
+        let idx = 0;
+        for (let i = 0; i < bounds.length; i++) if (x >= bounds[i]) idx = i + 1;
+        return idx;
+      };
+
+      // 헤더보다 위쪽 줄(현장명/점검업체 등 안내 표)과 맨 아래 비고 문구는 제외하고, 나머지 각 줄을
+      // 헤더 열 경계에 맞춰 재배치한다 - 줄 안의 글자 간격만으로 나누던 기존 방식은 세로 병합된 '설비'
+      // 칸처럼 특정 줄에 값이 아예 없는 열이 있으면 뒤 열들이 앞으로 밀려버렸다(신고된 버그의 원인).
+      // 열 경계 기준으로 나누면 값이 없는 열은 그냥 빈 칸으로 남고 나머지 열은 밀리지 않는다.
+      const dataEntries = sortedYs
+        .filter((y) => y < headerY)
+        .map((y) => {
+          const lineItems = lines.get(y).sort((a, b) => a.x - b.x);
+          const cols = headerColsX.map(() => "");
+          lineItems.forEach((it) => { cols[colOf(it.x)] += it.str; });
+          return { y, cols };
+        })
+        .filter((e) => !/^[※*]/.test(e.cols.join("")));
+
+      // '층'+'설치장소'가 함께 있는 줄 = 실제 지적항목 한 줄(이 표에서 세로 병합되지 않는 유일한 열들).
+      // 이 줄들을 항목의 기준(anchor)으로 삼고, 그 사이에 낀 다른 줄들(세로 병합된 '설비' 라벨이 줄바꿈/
+      // 가운데정렬로 따로 떨어져 나온 조각, 여러 줄로 나뉜 '불량내용' 조각)은 y좌표가 가장 가까운 anchor
+      // 줄에 원래 위아래 순서 그대로 이어붙인다.
+      const anchors = dataEntries.filter((e) => e.cols[1] && e.cols[2]);
+      if (!anchors.length) continue;
+
+      anchors.forEach((a) => {
+        a.category = [{ y: a.y, t: a.cols[0] }];
+        a.description = [{ y: a.y, t: a.cols[4] }];
+      });
+      dataEntries.forEach((e) => {
+        if (anchors.includes(e)) return;
+        if (!e.cols[0] && !e.cols[4]) return;
+        let nearest = anchors[0];
+        for (const a of anchors) if (Math.abs(a.y - e.y) < Math.abs(nearest.y - e.y)) nearest = a;
+        if (e.cols[0]) nearest.category.push({ y: e.y, t: e.cols[0] });
+        if (e.cols[4]) nearest.description.push({ y: e.y, t: e.cols[4] });
+      });
+
+      const joinTop = (list) => list.sort((a, b) => b.y - a.y).map((x) => x.t).filter(Boolean).join(" ").trim();
+      anchors.forEach((a) => {
+        allRows.push([joinTop(a.category), a.cols[1], a.cols[2], a.cols[3], joinTop(a.description)]);
       });
     }
 
