@@ -306,7 +306,7 @@ const HwpxExport = (() => {
   }
 
   // 셀 안의 "사진" 안내 문단을 지우고 그림 개체를 넣은 새 문단으로 교체. 이미지가 없으면 "사진 없음" 텍스트만 남김.
-  async function setCellPhoto(tc, blob, cellWidthHwp, imageState) {
+  async function setCellPhoto(tc, blob, imageState) {
     const doc = tc.ownerDocument;
     const subList = tc.getElementsByTagNameNS(HP, "subList")[0];
     const paras = Array.from(subList.getElementsByTagNameNS(HP, "p"));
@@ -344,19 +344,15 @@ const HwpxExport = (() => {
     }
     const { image, url, width, height } = decoded;
 
-    // 원본 비율(width/height)을 그대로 유지한 채 칸 폭(maxW)과 "한 페이지에 4건이 들어가도록 정한
-    // 행당 높이 예산"(maxH, ROW_MAX_HEIGHT_HWP) 안에 모두 들어가도록 축소한다(자르지 않음, contain-fit).
-    // 예전에는 폭 기준으로만 맞췄는데(높이는 한글이 알아서 행을 늘려준다는 전제) - 세로로 찍은 사진은
-    // 칸 폭을 다 채우면 키가 매우 커져(예: 3024x4032 사진이 약 95mm) 한 페이지에 1~2건밖에 못 담고
-    // 사진도 오히려 너무 커서 가독성이 떨어지는 문제가 있었다. 사용자가 "이행결과가 한 페이지에 4개씩
-    // (전후 사진 총 8장) 오도록" 요청 - ROW_MAX_HEIGHT_HWP는 A4 페이지 실사용 높이(84188-상단여백5668
-    // -하단여백2834=75686)에서 반복 헤더 3줄 높이(10589, 템플릿 샘플 파일 cellSz 기준)를 뺀 뒤 4로
-    // 나눈 값(16274)에서 셀 여백/줄간격 여유를 뺀 값 - HwpFrame.HwpObject COM 자동화로 실제 한글에
-    // 4건/8건짜리 보고서를 렌더링(PDF 저장 후 페이지 수 확인)해서 정확히 4건이 1페이지에 들어가는
-    // 것까지 확인했다.
-    const ROW_MAX_HEIGHT_HWP = 14800;
-    const maxW = cellWidthHwp - 200;
-    const maxH = ROW_MAX_HEIGHT_HWP;
+    // 이행전/이행후 사진 칸을 가로 52mm x 세로 52mm 정사각형으로 고정한다(사용자 요청, 2026-08-22) -
+    // 사진마다 화면에 보이는 크기가 원본 종횡비에 따라 들쭉날쭉하던 것을 표 전체에서 통일된 크기로
+    // 맞추기 위함. 원본 비율은 그대로 유지하고 자르지 않으며(contain-fit), 이 52x52mm 정사각형
+    // 안에 다 들어가도록만 축소한다 - 직사각형 사진은 한쪽 변이 52mm보다 작게 나온다(사용자가
+    // "자르지 말고 비율 유지" 쪽을 명시적으로 선택, 이전에 크롭 방식을 쓰지 말아달라고 요청했던
+    // 이력과 일관됨). HWPUNIT는 1/7200인치이므로 52mm = 52 / 25.4 * 7200 ≈ 14740.
+    const CELL_PHOTO_SIZE_HWP = Math.round((52 / 25.4) * 7200);
+    const maxW = CELL_PHOTO_SIZE_HWP;
+    const maxH = CELL_PHOTO_SIZE_HWP;
     const scale = Math.min(maxW / width, maxH / height);
     const hwpWidth = Math.max(1000, Math.round(width * scale));
     const hwpHeight = Math.max(1000, Math.round(height * scale));
@@ -434,7 +430,20 @@ const HwpxExport = (() => {
     }
   }
 
+  // tr[0..headerRowCount-1]의 모든 hp:tc에 header="1"을 표시해, 표가 여러 페이지에 걸치면 이 행들이
+  // 매 페이지 위에 반복되게 한다. 템플릿의 hp:tbl에는 이미 repeatHeader="1"이 붙어 있었지만 실제로
+  // 반복시킬 행의 hp:tc는 전부 header="0"이라 아무 행도 반복되지 않았다 - 그래서 지적사항이 4건을
+  // 넘어가 표가 2페이지로 넘어가면 2페이지 첫머리에 제목/안내문구/이행전·이행후 라벨 없이 사진 칸만
+  // 이어져 보이는 문제가 있었다(사용자 리포트, 2026-08-22).
+  function markHeaderRows(tbl, headerRowCount) {
+    const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
+    for (let i = 0; i < headerRowCount && i < trs.length; i++) {
+      Array.from(trs[i].getElementsByTagNameNS(HP, "tc")).forEach((tc) => tc.setAttribute("header", "1"));
+    }
+  }
+
   async function fillDeficiencyTable(doc, tbl, items, photoMap, imageState, headerDoc) {
+    markHeaderRows(tbl, 3);
     const trs = Array.from(tbl.getElementsByTagNameNS(HP, "tr"));
     // tr[0]=제목, tr[1]=이행결과/안내문구, tr[2]=이행전/이행후 라벨, tr[3..]=예시 데이터 4행 - 이 4행은
     // 표 안에서의 위치에 따라 테두리가 다르다: 첫 행은 위쪽 라벨 행과 맞물리는 윗선만 실선, 중간
@@ -452,8 +461,6 @@ const HwpxExport = (() => {
     const singleRowBorderFillIds = items.length === 1 && headerDoc
       ? buildSingleRowBorderFillIds(headerDoc, firstRowTemplate, lastRowTemplate)
       : null;
-
-    const rowWidthHwp = 20308; // 템플릿 사진 칸 폭 (샘플 파일 기준) - 높이는 한글이 내용에 맞춰 자동으로 늘리므로 필요 없음
 
     for (let i = 0; i < items.length; i++) {
       const def = items[i];
@@ -484,8 +491,8 @@ const HwpxExport = (() => {
       // 사진으로 채워짐") - 뒤에서부터 찾아 항상 가장 최근 것이 이기도록 한다.
       const beforePhoto = (def.beforePhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
       const afterPhoto = (def.afterPhotoIds || []).map((id) => photoMap.get(id)).filter(Boolean).pop() || null;
-      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, rowWidthHwp, imageState);
-      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, rowWidthHwp, imageState);
+      await setCellPhoto(beforeTc, beforePhoto ? beforePhoto.blob : null, imageState);
+      await setCellPhoto(afterTc, afterPhoto ? afterPhoto.blob : null, imageState);
 
       tbl.appendChild(row);
     }
