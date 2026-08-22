@@ -1861,7 +1861,7 @@
           <div class="photo-thumbs">
             ${thumbs}
             <label class="btn-add-photo-label">＋
-              <input type="file" accept="image/*" multiple class="deficiency-photo-input" data-def="${def.id}" data-role="${role}">
+              <input type="file" accept="image/*" class="deficiency-photo-input" data-def="${def.id}" data-role="${role}">
             </label>
           </div>
         </div>
